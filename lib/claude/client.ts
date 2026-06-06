@@ -1,20 +1,33 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-export const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
-export const FAST_MODEL = "claude-haiku-4-5-20250514";
+// 从环境变量读取模型名称，不限制具体模型
+// 如果不配置，使用通用的默认值（代理 API 可能会忽略此参数）
+export const DEFAULT_MODEL =
+  process.env.PROJECT_ANTHROPIC_MODEL ||
+  process.env.ANTHROPIC_MODEL ;
+
+export const FAST_MODEL =
+  process.env.PROJECT_ANTHROPIC_FAST_MODEL ||
+  process.env.ANTHROPIC_FAST_MODEL ;
 
 let _client: Anthropic | null = null;
 
 export function getClient(): Anthropic {
   if (_client) return _client;
 
-  // 支持自定义 API 端点（如 duckcoding.ai）
-  const apiKey = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
-  const baseURL = process.env.ANTHROPIC_BASE_URL;
+  // 优先使用项目专属环境变量，避免与终端 Claude Code 配置冲突
+  const apiKey =
+    process.env.PROJECT_ANTHROPIC_AUTH_TOKEN ||
+    process.env.PROJECT_ANTHROPIC_API_KEY ||
+    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.ANTHROPIC_API_KEY;
+
+  const baseURL =
+    process.env.PROJECT_ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL;
 
   if (!apiKey) {
     throw new Error(
-      "Missing ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY. Add it to .env.local (see .env.local.example).",
+      "Missing API key. Add PROJECT_ANTHROPIC_AUTH_TOKEN or PROJECT_ANTHROPIC_API_KEY to .env.local (see .env.local.example).",
     );
   }
 
