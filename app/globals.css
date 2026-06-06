@@ -1,26 +1,105 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafafa;
+  --foreground: #18181b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
-    --foreground: #ededed;
+    --foreground: #fafafa;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Markdown 内容样式 */
+.prose-tutor {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: inherit;
+}
+.prose-tutor h1,
+.prose-tutor h2,
+.prose-tutor h3,
+.prose-tutor h4 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+  line-height: 1.3;
+}
+.prose-tutor h1 { font-size: 1.4rem; }
+.prose-tutor h2 { font-size: 1.2rem; }
+.prose-tutor h3 { font-size: 1.05rem; }
+.prose-tutor p { margin: 0.6em 0; }
+.prose-tutor ul,
+.prose-tutor ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.prose-tutor ul { list-style: disc; }
+.prose-tutor ol { list-style: decimal; }
+.prose-tutor li { margin: 0.2em 0; }
+.prose-tutor code {
+  background: rgba(120, 120, 120, 0.15);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.prose-tutor pre {
+  background: rgba(120, 120, 120, 0.12);
+  padding: 0.8em 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+  font-size: 0.85em;
+}
+.prose-tutor pre code {
+  background: transparent;
+  padding: 0;
+}
+.prose-tutor blockquote {
+  border-left: 3px solid #999;
+  padding-left: 0.8em;
+  color: #888;
+  margin: 0.6em 0;
+}
+.prose-tutor strong { font-weight: 600; }
+.prose-tutor a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.prose-tutor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.85em;
+}
+.prose-tutor th,
+.prose-tutor td {
+  border: 1px solid rgba(120, 120, 120, 0.3);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.prose-tutor th { font-weight: 600; }
+
+/* line-clamp helpers */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
