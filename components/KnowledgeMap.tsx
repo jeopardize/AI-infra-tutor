@@ -4,9 +4,12 @@ import {
   ALL_TOPICS,
   CATEGORY_META,
   MASTERY_META,
+  localizedCheckpointName,
+  localizedTopicTitle,
   type Category,
 } from "@/lib/knowledge";
 import type { ProgressMap } from "@/lib/storage";
+import { useLang } from "@/lib/i18n/context";
 
 interface Props {
   progress: ProgressMap;
@@ -17,24 +20,26 @@ interface Props {
 const CATEGORY_ORDER: Category[] = ["training", "inference", "hardware", "system"];
 
 export function KnowledgeMap({ progress, onPick, highlightId }: Props) {
+  const { lang, t } = useLang();
   return (
     <div className="space-y-5">
       {CATEGORY_ORDER.map((cat) => {
-        const topics = ALL_TOPICS.filter((t) => t.category === cat);
+        const topics = ALL_TOPICS.filter((tt) => tt.category === cat);
         const meta = CATEGORY_META[cat];
+        const catLabel = t.categories[cat].label;
         return (
           <div key={cat}>
             <div className="text-xs font-semibold text-zinc-500 mb-2 flex items-center gap-1">
-              <span>{meta.emoji}</span> {meta.label}
+              <span>{meta.emoji}</span> {catLabel}
             </div>
             <div className="space-y-1.5">
-              {topics.map((t) => (
-                <div key={t.id} className="flex items-center gap-2">
+              {topics.map((topic) => (
+                <div key={topic.id} className="flex items-center gap-2">
                   <div className="text-xs w-32 shrink-0 truncate text-zinc-600 dark:text-zinc-300">
-                    {t.title}
+                    {localizedTopicTitle(topic, lang)}
                   </div>
                   <div className="flex gap-1 flex-wrap">
-                    {t.checkpoints.map((cp) => {
+                    {topic.checkpoints.map((cp) => {
                       const s = progress[cp.id]?.status ?? "unknown";
                       const m = MASTERY_META[s];
                       const isHi = cp.id === highlightId;
@@ -42,7 +47,7 @@ export function KnowledgeMap({ progress, onPick, highlightId }: Props) {
                         <button
                           key={cp.id}
                           onClick={() => onPick?.(cp.id)}
-                          title={`${cp.name} · ${m.label}`}
+                          title={`${localizedCheckpointName(cp, lang)} · ${t.mastery[s]}`}
                           className={
                             "w-5 h-5 rounded " +
                             m.color +
@@ -66,7 +71,7 @@ export function KnowledgeMap({ progress, onPick, highlightId }: Props) {
         {(["unknown", "gap", "learning", "mastered"] as const).map((s) => (
           <span key={s} className="flex items-center gap-1">
             <span className={`w-3 h-3 rounded ${MASTERY_META[s].color}`} />
-            {MASTERY_META[s].label}
+            {t.mastery[s]}
           </span>
         ))}
       </div>

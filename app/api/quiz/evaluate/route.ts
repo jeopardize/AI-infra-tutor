@@ -3,6 +3,7 @@ import {
   checkpointContextBlock,
   quizEvaluateSystem,
   systemWithCache,
+  type PromptLang,
 } from "@/lib/claude/prompts";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ interface EvaluateBody {
   checkpointId: string;
   question: string;
   answer: string;
+  language?: PromptLang;
 }
 
 const evalTool = {
@@ -70,6 +72,7 @@ export interface QuizEvaluation {
 
 export async function POST(req: Request) {
   const body = (await req.json()) as EvaluateBody;
+  const lang: PromptLang = body.language === "en" ? "en" : "zh";
 
   let client;
   try {
@@ -78,21 +81,33 @@ export async function POST(req: Request) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  const userPrompt = `【题面】
+  const userPrompt =
+    lang === "en"
+      ? `【Question】
+${body.question}
+
+【Learner's answer】
+${body.answer}
+
+【Reference info for this checkpoint】
+${checkpointContextBlock(body.checkpointId, lang)}
+
+Call submit_evaluation with structured feedback. Respond in English in all string fields.`
+      : `【题面】
 ${body.question}
 
 【学习者的回答】
 ${body.answer}
 
 【该 checkpoint 的参考信息】
-${checkpointContextBlock(body.checkpointId)}
+${checkpointContextBlock(body.checkpointId, lang)}
 
 请调用 submit_evaluation 工具提交结构化评估。`;
 
   const resp = await client.messages.create({
     model: pickModel("quality"),
     max_tokens: 2048,
-    system: systemWithCache(quizEvaluateSystem()),
+    system: systemWithCache(quizEvaluateSystem(lang)),
     tools: [evalTool],
     tool_choice: { type: "tool", name: "submit_evaluation" },
     messages: [{ role: "user", content: userPrompt }],

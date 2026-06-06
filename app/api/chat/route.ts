@@ -5,6 +5,7 @@ import {
   systemWithCache,
   topicContextBlock,
   tutorSystemPrompt,
+  type PromptLang,
 } from "@/lib/claude/prompts";
 
 export const runtime = "nodejs";
@@ -20,6 +21,7 @@ interface ChatBody {
   /** "learn" => 学习答疑； "interview" => 模拟面试 */
   mode: "learn" | "interview";
   speed?: Mode;
+  language?: PromptLang;
   /** learn 模式下当前的 topic / checkpoint */
   topicId?: string;
   checkpointId?: string;
@@ -39,21 +41,24 @@ export async function POST(req: Request) {
     return new Response("messages required", { status: 400 });
   }
 
+  const lang: PromptLang = body.language === "en" ? "en" : "zh";
+
   let systemText: string;
   if (body.mode === "interview") {
     if (!body.interview) {
       return new Response("interview opts required", { status: 400 });
     }
-    systemText = interviewSystem(body.interview);
+    systemText = interviewSystem({ ...body.interview, lang });
   } else {
-    const parts: string[] = [tutorSystemPrompt()];
+    const parts: string[] = [tutorSystemPrompt(lang)];
     if (body.topicId) {
-      parts.push("\n---\n【当前学习上下文】\n" + topicContextBlock(body.topicId));
+      const header = lang === "en" ? "[Current learning context]" : "【当前学习上下文】";
+      parts.push(`\n---\n${header}\n` + topicContextBlock(body.topicId, lang));
     }
     if (body.checkpointId) {
+      const header = lang === "en" ? "[Checkpoint details]" : "【当前 checkpoint 详情】";
       parts.push(
-        "\n---\n【当前 checkpoint 详情】\n" +
-          checkpointContextBlock(body.checkpointId),
+        `\n---\n${header}\n` + checkpointContextBlock(body.checkpointId, lang),
       );
     }
     systemText = parts.join("\n");

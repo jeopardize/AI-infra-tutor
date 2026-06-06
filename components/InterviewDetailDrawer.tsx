@@ -8,6 +8,7 @@ import {
   sessionToMarkdown,
 } from "@/lib/interviewExport";
 import type { InterviewSession } from "@/lib/storage";
+import { useT } from "@/lib/i18n/context";
 
 export function InterviewDetailDrawer({
   session,
@@ -24,6 +25,7 @@ export function InterviewDetailDrawer({
   /** 导出成功后调用，把笔记路径传上去（便于在 DocDrawer 里打开） */
   onOpenExported?: (path: string) => void;
 }) {
+  const t = useT();
   const [exporting, setExporting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok");
@@ -55,15 +57,15 @@ export function InterviewDetailDrawer({
       });
       const json = await r.json();
       if (!r.ok) {
-        setMsg(`导出失败：${json.error ?? r.statusText}`);
+        setMsg(`${t.interview.exportFailed}: ${json.error ?? r.statusText}`);
         setMsgKind("err");
         return;
       }
-      setMsg(`已导出到 ${fullPath}`);
+      setMsg(t.interview.exportedTo(fullPath));
       setMsgKind("ok");
       onOpenExported?.(fullPath);
     } catch (e) {
-      setMsg(`导出失败：${(e as Error).message}`);
+      setMsg(`${t.interview.exportFailed}: ${(e as Error).message}`);
       setMsgKind("err");
     } finally {
       setExporting(false);
@@ -88,7 +90,7 @@ export function InterviewDetailDrawer({
 
   function del() {
     if (!session) return;
-    if (!confirm("从历史中移除这条记录？（已导出的 .md 文件不会被删除）")) return;
+    if (!confirm(t.interview.confirmRemoveHistoryFile)) return;
     onDelete(session.id);
     onClose();
   }
@@ -100,7 +102,7 @@ export function InterviewDetailDrawer({
         <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800">
           <div className="min-w-0 flex-1">
             <div className="text-xs text-zinc-500 truncate">
-              📋 面试历史 · {dateStr}
+              {t.interview.fromHistory} · {dateStr}
             </div>
             <div className="font-medium truncate">
               {session.config.level} · {session.config.focus.join("/")} ·{" "}
@@ -115,7 +117,7 @@ export function InterviewDetailDrawer({
           <button
             onClick={exportToMd}
             disabled={exporting}
-            title="导出到笔记库"
+            title={t.interview.exportMd}
             className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-700 flex items-center gap-1"
           >
             {exporting ? (
@@ -123,18 +125,18 @@ export function InterviewDetailDrawer({
             ) : (
               <Download className="w-3.5 h-3.5" />
             )}
-            导出 .md
+            {t.interview.exportMd}
           </button>
           <button
             onClick={downloadLocal}
-            title="下载到本地"
+            title={t.common.download}
             className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
-            下载
+            {t.common.download}
           </button>
           <button
             onClick={del}
-            title="从历史中移除"
+            title={t.common.delete}
             className="p-1.5 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950 text-rose-600"
           >
             <Trash2 className="w-4 h-4" />
@@ -142,7 +144,7 @@ export function InterviewDetailDrawer({
           <button
             onClick={onClose}
             className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="关闭"
+            aria-label={t.common.close}
           >
             <X className="w-4 h-4" />
           </button>
@@ -158,8 +160,8 @@ export function InterviewDetailDrawer({
             }
           >
             <span>{msg}</span>
-            {msgKind === "ok" && msg?.startsWith("已导出") && (
-              <span className="text-zinc-500">在「笔记库」里可查看</span>
+            {msgKind === "ok" && (
+              <span className="text-zinc-500">{t.interview.exportedHint}</span>
             )}
           </div>
         )}
@@ -178,17 +180,17 @@ export function InterviewDetailDrawer({
                 </span>
               </div>
               <div className="grid grid-cols-4 gap-2 text-xs">
-                <DimBox label="概念清晰度" value={sc.dimensions.concept_clarity} />
-                <DimBox label="系统设计" value={sc.dimensions.system_design} />
-                <DimBox label="实战经验" value={sc.dimensions.practical_experience} />
-                <DimBox label="表达" value={sc.dimensions.communication} />
+                <DimBox label={t.interview.dimConceptClarity} value={sc.dimensions.concept_clarity} />
+                <DimBox label={t.interview.dimSystemDesign} value={sc.dimensions.system_design} />
+                <DimBox label={t.interview.dimPracticalExperience} value={sc.dimensions.practical_experience} />
+                <DimBox label={t.interview.dimCommunication} value={sc.dimensions.communication} />
               </div>
               {(sc.knowledge_gaps.length > 0 || sc.next_steps.length > 0) && (
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   {sc.knowledge_gaps.length > 0 && (
                     <div>
                       <div className="font-semibold mb-1 text-amber-700 dark:text-amber-400">
-                        知识盲点
+                        {t.interview.knowledgeGapsShort}
                       </div>
                       <ul className="space-y-0.5 text-zinc-700 dark:text-zinc-300">
                         {sc.knowledge_gaps.map((g, i) => (
@@ -205,7 +207,7 @@ export function InterviewDetailDrawer({
                   {sc.next_steps.length > 0 && (
                     <div>
                       <div className="font-semibold mb-1 text-blue-700 dark:text-blue-400">
-                        下一步建议
+                        {t.interview.nextStepsShort}
                       </div>
                       <ul className="space-y-0.5 text-zinc-700 dark:text-zinc-300">
                         {sc.next_steps.map((s, i) => (
@@ -222,7 +224,7 @@ export function InterviewDetailDrawer({
           {/* 完整对话 */}
           <section>
             <h3 className="text-sm font-semibold mb-3 text-zinc-500">
-              对话全文（{transcript.length} 条）
+              {t.interview.transcriptCount(transcript.length)}
             </h3>
             <div className="space-y-3">
               {transcript.map((m, i) => (
@@ -248,7 +250,7 @@ export function InterviewDetailDrawer({
                           : "text-zinc-500 dark:text-zinc-400")
                       }
                     >
-                      {m.role === "user" ? "🙋 我" : "🎙 面试官"}
+                      {m.role === "user" ? t.interview.me : t.interview.interviewer}
                     </div>
                     {m.role === "assistant" ? (
                       <Markdown>{m.content}</Markdown>
@@ -263,9 +265,9 @@ export function InterviewDetailDrawer({
         </div>
 
         <footer className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-          <span>会话 ID: <code>{session.id}</code></span>
+          <span>{t.interview.sessionId}: <code>{session.id}</code></span>
           <span>
-            导出到：<code>{exportDir || "(library 根)"}</code>
+            {t.interview.exportingTo}: <code>{exportDir || t.interview.libraryRoot}</code>
           </span>
         </footer>
       </aside>

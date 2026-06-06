@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2 } from "lucide-react";
 import { Markdown } from "./Markdown";
+import { useLang } from "@/lib/i18n/context";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -19,6 +20,7 @@ export interface ChatPanelProps {
 }
 
 export function ChatPanel(props: ChatPanelProps) {
+  const { lang, t } = useLang();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,13 +50,14 @@ export function ChatPanel(props: ChatPanelProps) {
           messages: next,
           topicId: props.topicId,
           checkpointId: props.checkpointId,
+          language: lang,
         }),
       });
       if (!res.ok || !res.body) {
         const err = await res.text();
         setMessages((m) => [
           ...m,
-          { role: "assistant", content: `[请求失败] ${err}` },
+          { role: "assistant", content: `[${t.chat.requestFailed}] ${err}` },
         ]);
         return;
       }
@@ -76,7 +79,7 @@ export function ChatPanel(props: ChatPanelProps) {
     } catch (e) {
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: `[网络错误] ${(e as Error).message}` },
+        { role: "assistant", content: `[${t.chat.networkError}] ${(e as Error).message}` },
       ]);
     } finally {
       setLoading(false);
@@ -93,7 +96,7 @@ export function ChatPanel(props: ChatPanelProps) {
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-sm text-zinc-400 text-center mt-8">
-            {props.placeholder ?? "向 AI 导师提问吧 — 比如「能举个例子吗」「这里我没理解」"}
+            {props.placeholder ?? t.chat.emptyHint}
           </div>
         )}
         {messages.map((m, i) => (
@@ -133,7 +136,7 @@ export function ChatPanel(props: ChatPanelProps) {
             }
           }}
           rows={2}
-          placeholder="Enter 发送，Shift+Enter 换行"
+          placeholder={t.chat.inputPlaceholder}
           className="flex-1 resize-none px-2 py-1 text-sm bg-transparent outline-none"
         />
         <button
@@ -146,7 +149,7 @@ export function ChatPanel(props: ChatPanelProps) {
           ) : (
             <Send className="w-4 h-4" />
           )}
-          发送
+          {t.chat.send}
         </button>
       </div>
     </div>

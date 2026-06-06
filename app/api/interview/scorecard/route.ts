@@ -2,6 +2,7 @@ import { getClient, pickModel } from "@/lib/claude/client";
 import {
   interviewScorecardSystem,
   systemWithCache,
+  type PromptLang,
 } from "@/lib/claude/prompts";
 
 export const runtime = "nodejs";
@@ -10,6 +11,7 @@ export const maxDuration = 120;
 interface ScorecardBody {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   config: { level: string; focus: string[]; durationMin: number };
+  language?: PromptLang;
 }
 
 const scorecardTool = {
@@ -101,6 +103,7 @@ export interface Scorecard {
 
 export async function POST(req: Request) {
   const body = (await req.json()) as ScorecardBody;
+  const lang: PromptLang = body.language === "en" ? "en" : "zh";
 
   let client;
   try {
@@ -110,12 +113,30 @@ export async function POST(req: Request) {
   }
 
   const transcript = body.messages
-    .map((m) => `**${m.role === "user" ? "候选人" : "面试官"}**：${m.content}`)
+    .map((m) => {
+      if (lang === "en") {
+        return `**${m.role === "user" ? "Candidate" : "Interviewer"}**: ${m.content}`;
+      }
+      return `**${m.role === "user" ? "候选人" : "面试官"}**：${m.content}`;
+    })
     .join("\n\n");
 
-  const userPrompt = `以下是刚结束的模拟面试完整对话。配置：${JSON.stringify(
-    body.config,
-  )}
+  const userPrompt =
+    lang === "en"
+      ? `Below is the just-completed mock interview transcript. Config: ${JSON.stringify(
+          body.config,
+        )}
+
+---
+
+${transcript}
+
+---
+
+Based on the above, call submit_scorecard. All string fields must be in English.`
+      : `以下是刚结束的模拟面试完整对话。配置：${JSON.stringify(
+          body.config,
+        )}
 
 ---
 
@@ -128,7 +149,7 @@ ${transcript}
   const resp = await client.messages.create({
     model: pickModel("quality"),
     max_tokens: 2048,
-    system: systemWithCache(interviewScorecardSystem()),
+    system: systemWithCache(interviewScorecardSystem(lang)),
     tools: [scorecardTool],
     tool_choice: { type: "tool", name: "submit_scorecard" },
     messages: [{ role: "user", content: userPrompt }],

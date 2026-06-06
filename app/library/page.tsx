@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { DocDrawer } from "@/components/DocDrawer";
+import { useT } from "@/lib/i18n/context";
 
 interface DocNode {
   name: string;
@@ -28,6 +29,7 @@ interface TreeResp {
 }
 
 export default function LibraryPage() {
+  const t = useT();
   const [data, setData] = useState<TreeResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -53,12 +55,10 @@ export default function LibraryPage() {
   useEffect(load, [load]);
 
   async function createFile(parentPath: string) {
-    const name = window.prompt(
-      `在「${parentPath || "(根)"}」下新建笔记。文件名（自动补 .md）：`,
-    );
+    const name = window.prompt(t.library.newFilePrompt(parentPath));
     if (!name) return;
     if (/[\\/<>:"|?*\0]/.test(name)) {
-      alert("文件名不能包含 / \\ < > : \" | ? * 等字符");
+      alert(t.library.invalidFilename);
       return;
     }
     const filename = /\.(md|markdown)$/i.test(name) ? name : `${name}.md`;
@@ -70,7 +70,7 @@ export default function LibraryPage() {
     });
     const json = await r.json();
     if (!r.ok) {
-      alert(`创建失败：${json.error}`);
+      alert(t.library.createFailed(json.error));
       return;
     }
     load();
@@ -78,12 +78,10 @@ export default function LibraryPage() {
   }
 
   async function createDir(parentPath: string) {
-    const name = window.prompt(
-      `在「${parentPath || "(根)"}」下新建文件夹：`,
-    );
+    const name = window.prompt(t.library.newDirPrompt(parentPath));
     if (!name) return;
     if (/[\\/<>:"|?*\0]/.test(name)) {
-      alert("文件夹名不能包含 / \\ < > : \" | ? * 等字符");
+      alert(t.library.invalidDirname);
       return;
     }
     const fullPath = parentPath ? `${parentPath}/${name}` : name;
@@ -94,7 +92,7 @@ export default function LibraryPage() {
     });
     const json = await r.json();
     if (!r.ok) {
-      alert(`创建失败：${json.error}`);
+      alert(t.library.createFailed(json.error));
       return;
     }
     load();
@@ -104,16 +102,14 @@ export default function LibraryPage() {
     <div className="max-w-4xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold">我的笔记库</h1>
-          <p className="text-zinc-500 text-sm mt-1">
-            实时读取本地目录；在网页里编辑会直接写回对应 .md 文件。
-          </p>
+          <h1 className="text-2xl font-bold">{t.library.title}</h1>
+          <p className="text-zinc-500 text-sm mt-1">{t.library.subtitle}</p>
         </div>
         <button
           onClick={load}
           className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
         >
-          <RefreshCw className="w-3.5 h-3.5" /> 刷新
+          <RefreshCw className="w-3.5 h-3.5" /> {t.common.refresh}
         </button>
       </div>
 
@@ -123,17 +119,14 @@ export default function LibraryPage() {
 
       {loading && (
         <div className="text-zinc-500 flex items-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" /> 扫描中...
+          <Loader2 className="w-4 h-4 animate-spin" /> {t.library.scanning}
         </div>
       )}
 
       {err && (
         <div className="text-rose-600 text-sm">
           ⚠️ {err}
-          <div className="text-xs text-zinc-500 mt-1">
-            可在项目根目录的 <code>.env.local</code> 设置{" "}
-            <code>KNOWLEDGE_LIBRARY_PATH</code> 指向你的笔记目录。
-          </div>
+          <div className="text-xs text-zinc-500 mt-1">{t.library.setEnvHint}</div>
         </div>
       )}
 
@@ -171,6 +164,7 @@ function Tree({
   onNewFile: (parent: string) => void;
   onNewDir: (parent: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(depth < 1);
   const [hover, setHover] = useState(false);
   if (node.type === "file") {
@@ -182,7 +176,7 @@ function Tree({
       <button
         onClick={() => isMd && onOpen(node.path)}
         disabled={!isMd}
-        title={isMd ? "点击查看/编辑" : "暂不支持预览此类型"}
+        title={isMd ? t.library.clickToOpen : t.library.notPreviewable}
         style={{ paddingLeft: 12 + depth * 16 }}
         className={
           "w-full text-left py-1 text-sm rounded flex items-center gap-1.5 " +
@@ -232,7 +226,7 @@ function Tree({
               e.stopPropagation();
               onNewFile(node.path);
             }}
-            title="新建 .md 笔记"
+            title={t.library.newFile}
             className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
           >
             <FilePlus className="w-3.5 h-3.5 text-blue-600" />
@@ -242,7 +236,7 @@ function Tree({
               e.stopPropagation();
               onNewDir(node.path);
             }}
-            title="新建子文件夹"
+            title={t.library.newDir}
             className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
           >
             <FolderPlus className="w-3.5 h-3.5 text-amber-600" />

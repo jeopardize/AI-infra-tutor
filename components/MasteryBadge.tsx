@@ -1,4 +1,7 @@
+"use client";
+
 import { MASTERY_META, type MasteryStatus } from "@/lib/knowledge";
+import { useT } from "@/lib/i18n/context";
 
 export function MasteryBadge({
   status,
@@ -7,12 +10,13 @@ export function MasteryBadge({
   status: MasteryStatus;
   size?: "sm" | "md";
 }) {
+  const t = useT();
   const meta = MASTERY_META[status];
   const dim = size === "sm" ? "w-2.5 h-2.5" : "w-3.5 h-3.5";
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
       <span className={`${dim} rounded-full ${meta.color}`} />
-      {meta.label}
+      {t.mastery[status]}
     </span>
   );
 }

@@ -14,11 +14,13 @@ import {
   loadProgress,
   type TopicStat,
 } from "@/lib/storage";
+import { useT } from "@/lib/i18n/context";
 import { BookOpen, MessageSquare, Target } from "lucide-react";
 
 const CATEGORY_ORDER: Category[] = ["training", "inference", "hardware", "system"];
 
 export default function HomePage() {
+  const t = useT();
   const [stats, setStats] = useState<TopicStat[]>([]);
   const [totals, setTotals] = useState({ mastered: 0, gap: 0, total: 0 });
 
@@ -44,14 +46,14 @@ export default function HomePage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <section className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">
-          欢迎，开始你的 AI Infra 学习之旅
-        </h1>
+        <h1 className="text-2xl font-bold mb-2">{t.dashboard.welcomeTitle}</h1>
         <p className="text-zinc-500 dark:text-zinc-400">
-          共 <strong>{ALL_TOPICS.length}</strong> 个主题、
-          <strong>{totals.total}</strong> 个 checkpoint。已掌握{" "}
-          <strong className="text-emerald-600">{totals.mastered}</strong>，盲点{" "}
-          <strong className="text-rose-600">{totals.gap}</strong>。
+          {t.dashboard.statsTpl({
+            topics: ALL_TOPICS.length,
+            total: totals.total,
+            mastered: totals.mastered,
+            gap: totals.gap,
+          })}
         </p>
         <div className="mt-3 h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden max-w-md">
           <div
@@ -65,22 +67,22 @@ export default function HomePage() {
         <ActionCard
           href="/quiz"
           icon={<Target className="w-5 h-5" />}
-          title="查漏补缺"
-          desc="挑一个 checkpoint，AI 出题、批改、揭示你的盲点"
+          title={t.dashboard.actionQuizTitle}
+          desc={t.dashboard.actionQuizDesc}
           color="bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
         />
         <ActionCard
           href={`/learn/${ALL_TOPICS[0].id}`}
           icon={<BookOpen className="w-5 h-5" />}
-          title="开始学习"
-          desc="从知识点详情进入，边读边和 AI 导师对话"
+          title={t.dashboard.actionLearnTitle}
+          desc={t.dashboard.actionLearnDesc}
           color="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300"
         />
         <ActionCard
           href="/interview"
           icon={<MessageSquare className="w-5 h-5" />}
-          title="模拟面试"
-          desc="多轮对话式模拟，结束生成可量化的 scorecard"
+          title={t.dashboard.actionInterviewTitle}
+          desc={t.dashboard.actionInterviewDesc}
           color="bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
         />
       </section>
@@ -88,12 +90,13 @@ export default function HomePage() {
       {CATEGORY_ORDER.map((cat) => {
         const topics = TOPICS_BY_CATEGORY[cat];
         const meta = CATEGORY_META[cat];
+        const catText = t.categories[cat];
         return (
           <section key={cat} className="mb-10">
             <div className="flex items-baseline gap-2 mb-3">
               <span className="text-xl">{meta.emoji}</span>
-              <h2 className="text-lg font-semibold">{meta.label}</h2>
-              <span className="text-xs text-zinc-500">{meta.description}</span>
+              <h2 className="text-lg font-semibold">{catText.label}</h2>
+              <span className="text-xs text-zinc-500">{catText.description}</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {topics.map((t) => (

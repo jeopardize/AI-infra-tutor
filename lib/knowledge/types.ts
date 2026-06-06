@@ -1,4 +1,5 @@
 export type Category = "training" | "inference" | "hardware" | "system";
+export type Lang = "zh" | "en";
 
 export const CATEGORY_META: Record<
   Category,
@@ -33,16 +34,21 @@ export const CATEGORY_META: Record<
 export interface Checkpoint {
   id: string;
   name: string;
+  nameEn?: string;
   /** Markdown：该 checkpoint 必须掌握的核心要点 */
   mustKnow: string;
+  mustKnowEn?: string;
   /** 学习者常见的误区或偏差 */
   commonMisconceptions: string[];
+  commonMisconceptionsEn?: string[];
   /** 面试中常见的追问角度（用于出题与模拟面试） */
   interviewAngles: string[];
+  interviewAnglesEn?: string[];
 }
 
 export interface Resource {
   title: string;
+  titleEn?: string;
   url: string;
   kind: "paper" | "blog" | "docs" | "video" | "code";
 }
@@ -50,9 +56,11 @@ export interface Resource {
 export interface Topic {
   id: string;
   title: string;
+  titleEn?: string;
   category: Category;
   /** 一句话描述，用于卡片展示 */
   summary: string;
+  summaryEn?: string;
   /** 推荐先学的 topic id */
   prerequisites: string[];
   checkpoints: Checkpoint[];
@@ -72,3 +80,53 @@ export const MASTERY_META: Record<
   learning: { label: "学习中", color: "bg-amber-500", weight: 2 },
   mastered: { label: "已掌握", color: "bg-emerald-500", weight: 3 },
 };
+
+// ---------------- Localization helpers ----------------
+
+/** 根据语言挑选字段；en 缺省时回退到中文。 */
+export function pickLocalized<T extends string | string[] | undefined>(
+  zh: T,
+  en: T | undefined,
+  lang: Lang,
+): T {
+  if (lang === "en" && en !== undefined && en !== null) return en;
+  return zh;
+}
+
+export function localizedTopicTitle(topic: Topic, lang: Lang): string {
+  return lang === "en" && topic.titleEn ? topic.titleEn : topic.title;
+}
+
+export function localizedTopicSummary(topic: Topic, lang: Lang): string {
+  return lang === "en" && topic.summaryEn ? topic.summaryEn : topic.summary;
+}
+
+export function localizedCheckpointName(cp: Checkpoint, lang: Lang): string {
+  return lang === "en" && cp.nameEn ? cp.nameEn : cp.name;
+}
+
+export function localizedCheckpointMustKnow(cp: Checkpoint, lang: Lang): string {
+  return lang === "en" && cp.mustKnowEn ? cp.mustKnowEn : cp.mustKnow;
+}
+
+export function localizedCheckpointMisconceptions(
+  cp: Checkpoint,
+  lang: Lang,
+): string[] {
+  return lang === "en" && cp.commonMisconceptionsEn
+    ? cp.commonMisconceptionsEn
+    : cp.commonMisconceptions;
+}
+
+export function localizedCheckpointInterviewAngles(
+  cp: Checkpoint,
+  lang: Lang,
+): string[] {
+  return lang === "en" && cp.interviewAnglesEn
+    ? cp.interviewAnglesEn
+    : cp.interviewAngles;
+}
+
+export function localizedResourceTitle(r: Resource, lang: Lang): string {
+  return lang === "en" && r.titleEn ? r.titleEn : r.title;
+}

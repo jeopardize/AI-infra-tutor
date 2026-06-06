@@ -3,6 +3,7 @@ import {
   checkpointContextBlock,
   quizGenerateSystem,
   systemWithCache,
+  type PromptLang,
 } from "@/lib/claude/prompts";
 import { getCheckpoint } from "@/lib/knowledge";
 
@@ -10,7 +11,11 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const { checkpointId } = (await req.json()) as { checkpointId: string };
+  const { checkpointId, language } = (await req.json()) as {
+    checkpointId: string;
+    language?: PromptLang;
+  };
+  const lang: PromptLang = language === "en" ? "en" : "zh";
   const found = getCheckpoint(checkpointId);
   if (!found) {
     return new Response("checkpoint not found", { status: 404 });
@@ -23,16 +28,23 @@ export async function POST(req: Request) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  const userPrompt = `请基于以下 checkpoint 出**一道**开放题：
+  const userPrompt =
+    lang === "en"
+      ? `Generate **one** open question based on the following checkpoint:
 
-${checkpointContextBlock(checkpointId)}
+${checkpointContextBlock(checkpointId, lang)}
+
+Return JSON only: \`{"question": "..."}\``
+      : `请基于以下 checkpoint 出**一道**开放题：
+
+${checkpointContextBlock(checkpointId, lang)}
 
 只返回 JSON，不要别的：\`{"question": "..."}\``;
 
   const resp = await client.messages.create({
     model: pickModel("quality"),
     max_tokens: 1024,
-    system: systemWithCache(quizGenerateSystem()),
+    system: systemWithCache(quizGenerateSystem(lang)),
     messages: [{ role: "user", content: userPrompt }],
   });
 

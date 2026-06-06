@@ -7,6 +7,13 @@ import {
   CATEGORY_META,
   MASTERY_META,
   getTopic,
+  localizedCheckpointInterviewAngles,
+  localizedCheckpointMisconceptions,
+  localizedCheckpointMustKnow,
+  localizedCheckpointName,
+  localizedResourceTitle,
+  localizedTopicSummary,
+  localizedTopicTitle,
   type Checkpoint,
   type MasteryStatus,
 } from "@/lib/knowledge";
@@ -14,6 +21,7 @@ import { Markdown } from "@/components/Markdown";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MasteryDot } from "@/components/MasteryBadge";
 import { DocDrawer } from "@/components/DocDrawer";
+import { useLang } from "@/lib/i18n/context";
 import {
   loadProgress,
   setCheckpointStatus,
@@ -29,6 +37,7 @@ export default function LearnTopicPage({
   const { topicId } = use(params);
   const topic = getTopic(topicId);
   if (!topic) notFound();
+  const { lang, t } = useLang();
 
   const [activeCp, setActiveCp] = useState<Checkpoint>(topic.checkpoints[0]);
   const [progress, setProgress] = useState<ProgressMap>({});
@@ -52,21 +61,21 @@ export default function LearnTopicPage({
         href="/"
         className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-4"
       >
-        <ArrowLeft className="w-4 h-4" /> 返回总览
+        <ArrowLeft className="w-4 h-4" /> {t.learn.backToDashboard}
       </Link>
 
       <div className="flex items-center gap-2 mb-1 text-xs text-zinc-500">
         <span>{meta.emoji}</span>
-        <span>{meta.label}</span>
+        <span>{t.categories[topic.category].label}</span>
       </div>
-      <h1 className="text-2xl font-bold mb-1">{topic.title}</h1>
-      <p className="text-zinc-500 dark:text-zinc-400 mb-6">{topic.summary}</p>
+      <h1 className="text-2xl font-bold mb-1">{localizedTopicTitle(topic, lang)}</h1>
+      <p className="text-zinc-500 dark:text-zinc-400 mb-6">{localizedTopicSummary(topic, lang)}</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_360px] gap-4">
         {/* 左：checkpoint 列表 */}
         <aside className="space-y-1">
           <div className="text-xs font-medium text-zinc-500 mb-2 px-2">
-            CHECKPOINTS（{topic.checkpoints.length}）
+            {t.learn.checkpointsLabel(topic.checkpoints.length)}
           </div>
           {topic.checkpoints.map((cp) => {
             const s = progress[cp.id]?.status ?? "unknown";
@@ -85,7 +94,7 @@ export default function LearnTopicPage({
                 <span className="mt-1.5">
                   <MasteryDot status={s} />
                 </span>
-                <span>{cp.name}</span>
+                <span>{localizedCheckpointName(cp, lang)}</span>
               </button>
             );
           })}
@@ -93,7 +102,7 @@ export default function LearnTopicPage({
           {topic.localDocs && topic.localDocs.length > 0 && (
             <div className="pt-4">
               <div className="text-xs font-medium text-zinc-500 mb-2 px-2 flex items-center gap-1">
-                <BookText className="w-3 h-3" /> 我的笔记
+                <BookText className="w-3 h-3" /> {t.learn.myNotes}
               </div>
               {topic.localDocs.map((p) => (
                 <button
@@ -112,7 +121,7 @@ export default function LearnTopicPage({
           {topic.resources.length > 0 && (
             <div className="pt-4">
               <div className="text-xs font-medium text-zinc-500 mb-2 px-2">
-                推荐资源
+                {t.learn.recommendedResources}
               </div>
               {topic.resources.map((r) => (
                 <a
@@ -122,7 +131,7 @@ export default function LearnTopicPage({
                   rel="noreferrer"
                   className="flex items-center gap-1 px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 hover:text-blue-600"
                 >
-                  <ExternalLink className="w-3 h-3" /> {r.title}
+                  <ExternalLink className="w-3 h-3" /> {localizedResourceTitle(r, lang)}
                 </a>
               ))}
             </div>
@@ -132,36 +141,36 @@ export default function LearnTopicPage({
         {/* 中：当前 checkpoint 内容 */}
         <article className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">{activeCp.name}</h2>
+            <h2 className="text-lg font-semibold">{localizedCheckpointName(activeCp, lang)}</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs text-zinc-500">
-                {MASTERY_META[curStatus].label}
+                {t.mastery[curStatus]}
               </span>
               <button
                 onClick={() => markStatus("mastered")}
                 className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1"
               >
                 <Check className="w-3 h-3" />
-                我已掌握
+                {t.learn.markMastered}
               </button>
               <Link
                 href={`/quiz?cp=${activeCp.id}`}
                 className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
               >
                 <Sparkles className="w-3 h-3" />
-                考考我
+                {t.learn.quizMe}
               </Link>
             </div>
           </div>
 
           <section className="mb-5">
-            <Markdown>{activeCp.mustKnow}</Markdown>
+            <Markdown>{localizedCheckpointMustKnow(activeCp, lang)}</Markdown>
           </section>
 
           {topic.localDocs && topic.localDocs.length > 0 && (
             <section className="mb-5 p-3 rounded-md bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-900">
               <h3 className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-2 flex items-center gap-1">
-                <BookText className="w-3.5 h-3.5" /> 相关的我的笔记
+                <BookText className="w-3.5 h-3.5" /> {t.learn.relatedMyNotes}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {topic.localDocs.map((p) => (
@@ -181,10 +190,10 @@ export default function LearnTopicPage({
           {activeCp.commonMisconceptions.length > 0 && (
             <section className="mb-5 p-3 rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900">
               <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300 mb-2">
-                ⚠️ 常见误区
+                {t.learn.commonMisconceptions}
               </h3>
               <ul className="list-disc pl-5 space-y-1 text-sm text-rose-900 dark:text-rose-100">
-                {activeCp.commonMisconceptions.map((m, i) => (
+                {localizedCheckpointMisconceptions(activeCp, lang).map((m, i) => (
                   <li key={i}>{m}</li>
                 ))}
               </ul>
@@ -194,10 +203,10 @@ export default function LearnTopicPage({
           {activeCp.interviewAngles.length > 0 && (
             <section className="p-3 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900">
               <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-2">
-                🎙 面试常见追问
+                {t.learn.interviewAngles}
               </h3>
               <ul className="list-disc pl-5 space-y-1 text-sm text-blue-900 dark:text-blue-100">
-                {activeCp.interviewAngles.map((a, i) => (
+                {localizedCheckpointInterviewAngles(activeCp, lang).map((a, i) => (
                   <li key={i}>{a}</li>
                 ))}
               </ul>
@@ -210,8 +219,8 @@ export default function LearnTopicPage({
           <ChatPanel
             topicId={topic.id}
             checkpointId={activeCp.id}
-            hint={`在「${activeCp.name}」上下文中向 AI 导师提问`}
-            placeholder="试试：&quot;能用最简单的话解释一遍吗&quot; / &quot;这里和 X 有什么区别？&quot;"
+            hint={t.learn.chatHint(localizedCheckpointName(activeCp, lang))}
+            placeholder={t.learn.chatPlaceholder}
           />
         </div>
       </div>

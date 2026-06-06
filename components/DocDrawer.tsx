@@ -12,6 +12,7 @@ import {
   Save,
   X,
 } from "lucide-react";
+import { useT } from "@/lib/i18n/context";
 
 interface DocReadResp {
   root: string;
@@ -44,6 +45,7 @@ export function DocDrawer({
   /** 保存成功后回调（用于刷新外部列表的 mtime/大小） */
   onSaved?: (path: string, mtime: number) => void;
 }) {
+  const t = useT();
   const [data, setData] = useState<DocReadResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export function DocDrawer({
   const [savedMtime, setSavedMtime] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [saveMsgKind, setSaveMsgKind] = useState<"ok" | "warn" | "err">("ok");
   const draftRef = useRef<HTMLTextAreaElement>(null);
 
   // 拉取文档内容
@@ -135,23 +138,25 @@ export function DocDrawer({
       const json = (await r.json()) as WriteResp;
       if (!r.ok) {
         if (r.status === 409 && json.currentMtime) {
-          setSaveMsg(
-            `⚠️ 外部修改过此文件。点击「重新加载」会丢弃你的编辑内容。`,
-          );
+          setSaveMsg(t.docDrawer.saveExternalConflict);
+          setSaveMsgKind("warn");
         } else {
-          setSaveMsg(`保存失败：${json.error ?? r.statusText}`);
+          setSaveMsg(t.docDrawer.saveFailed(json.error ?? r.statusText));
+          setSaveMsgKind("err");
         }
         return;
       }
       // 同步本地状态
       setData({ ...data, content: draft, mtime: json.mtime!, bytes: json.bytes! });
       setSavedMtime(json.mtime);
-      setSaveMsg("已保存");
+      setSaveMsg(t.docDrawer.saveOk);
+      setSaveMsgKind("ok");
       onSaved?.(data.path, json.mtime!);
       // 2 秒后清掉提示
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (e) {
-      setSaveMsg(`保存失败：${(e as Error).message}`);
+      setSaveMsg(t.docDrawer.saveFailed((e as Error).message));
+      setSaveMsgKind("err");
     } finally {
       setSaving(false);
     }
@@ -176,7 +181,7 @@ export function DocDrawer({
           setSavedMtime(json.mtime);
           setSaveMsg(null);
         } else {
-          setErr(json.error ?? "重载失败");
+          setErr(json.error ?? t.docDrawer.readFailed(""));
         }
         setLoading(false);
       })();
@@ -204,7 +209,7 @@ export function DocDrawer({
         className="fixed inset-0 bg-black/30 z-40"
         onClick={() => {
           if (dirty) {
-            if (!confirm("有未保存的修改，确定关闭？")) return;
+            if (!confirm(t.docDrawer.confirmCloseUnsaved)) return;
           }
           onClose();
         }}
@@ -213,12 +218,12 @@ export function DocDrawer({
         <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800">
           <div className="min-w-0 flex-1">
             <div className="text-xs text-zinc-500 truncate">
-              📚 我的笔记 · {data?.dir || ""}
+              {t.docDrawer.headerLabel(data?.dir ?? "")}
             </div>
             <div className="font-medium truncate flex items-center gap-1.5">
               {data?.name ?? docPath}
               {dirty && (
-                <span className="text-xs text-amber-600">● 未保存</span>
+                <span className="text-xs text-amber-600">● {t.common.unsaved}</span>
               )}
             </div>
           </div>
@@ -231,7 +236,7 @@ export function DocDrawer({
                   <button
                     onClick={save}
                     disabled={!dirty || saving}
-                    title="Cmd/Ctrl+S 保存"
+                    title="Cmd/Ctrl+S"
                     className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-700 flex items-center gap-1"
                   >
                     {saving ? (
@@ -239,13 +244,13 @@ export function DocDrawer({
                     ) : (
                       <Save className="w-3.5 h-3.5" />
                     )}
-                    保存
+                    {t.common.save}
                   </button>
                   <button
                     onClick={() => setMode("preview")}
                     className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
                   >
-                    <Eye className="w-3.5 h-3.5" /> 预览
+                    <Eye className="w-3.5 h-3.5" /> {t.common.preview}
                   </button>
                 </>
               ) : (
@@ -253,18 +258,18 @@ export function DocDrawer({
                   onClick={() => setMode("edit")}
                   className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
                 >
-                  <Pencil className="w-3.5 h-3.5" /> 编辑
+                  <Pencil className="w-3.5 h-3.5" /> {t.common.edit}
                 </button>
               )}
             </div>
           )}
           <button
             onClick={() => {
-              if (dirty && !confirm("有未保存的修改，确定关闭？")) return;
+              if (dirty && !confirm(t.docDrawer.confirmCloseUnsaved)) return;
               onClose();
             }}
             className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="关闭"
+            aria-label={t.common.close}
           >
             <X className="w-4 h-4" />
           </button>
@@ -275,22 +280,20 @@ export function DocDrawer({
           <div className="px-4 py-2 text-xs flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
             <span
               className={
-                saveMsg.startsWith("⚠️") || saveMsg.startsWith("保存失败")
-                  ? "text-rose-600"
-                  : "text-emerald-600 flex items-center gap-1"
+                saveMsgKind === "ok"
+                  ? "text-emerald-600 flex items-center gap-1"
+                  : "text-rose-600"
               }
             >
-              {!saveMsg.startsWith("⚠️") && !saveMsg.startsWith("保存失败") && (
-                <Check className="w-3 h-3" />
-              )}
+              {saveMsgKind === "ok" && <Check className="w-3 h-3" />}
               {saveMsg}
             </span>
-            {saveMsg.startsWith("⚠️") && (
+            {saveMsgKind === "warn" && (
               <button
                 onClick={reload}
                 className="text-xs text-blue-600 hover:underline"
               >
-                重新加载
+                {t.docDrawer.reload}
               </button>
             )}
           </div>
@@ -299,12 +302,12 @@ export function DocDrawer({
         <div className="flex-1 overflow-y-auto">
           {loading && (
             <div className="flex items-center gap-2 text-zinc-500 p-5">
-              <Loader2 className="w-4 h-4 animate-spin" /> 加载中...
+              <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.loading}
             </div>
           )}
           {err && (
             <div className="text-rose-600 text-sm p-5">
-              ⚠️ 无法读取：{err}
+              {t.docDrawer.readFailed(err)}
             </div>
           )}
 
@@ -312,7 +315,7 @@ export function DocDrawer({
             <div className="p-5">
               {data.content.trim() === "" ? (
                 <div className="text-zinc-400 italic">
-                  （这个笔记还没有内容，点右上角「编辑」开始写）
+                  {t.docDrawer.emptyContent}
                 </div>
               ) : (
                 <div className="prose-tutor">
@@ -358,7 +361,7 @@ export function DocDrawer({
               onChange={(e) => setDraft(e.target.value)}
               spellCheck={false}
               className="w-full h-full min-h-[300px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
-              placeholder="开始写..."
+              placeholder=""
             />
           )}
         </div>
@@ -368,10 +371,10 @@ export function DocDrawer({
             <span>
               {Math.round((data.bytes ?? 0) / 1024)} KB
               {mode === "edit" && (
-                <span className="ml-3">{draft.length} 字符</span>
+                <span className="ml-3">{t.docDrawer.charsCount(draft.length)}</span>
               )}
             </span>
-            <span>更新于 {new Date(data.mtime).toLocaleString()}</span>
+            <span>{t.docDrawer.updatedAt(new Date(data.mtime).toLocaleString())}</span>
           </footer>
         )}
       </aside>

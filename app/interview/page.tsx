@@ -5,11 +5,15 @@ import Link from "next/link";
 import {
   CATEGORY_META,
   getCheckpoint,
+  localizedCheckpointName,
+  localizedTopicTitle,
   type Category,
 } from "@/lib/knowledge";
 import { Markdown } from "@/components/Markdown";
 import { DocDrawer } from "@/components/DocDrawer";
 import { InterviewDetailDrawer } from "@/components/InterviewDetailDrawer";
+import { useLang } from "@/lib/i18n/context";
+import type { Dict, Lang } from "@/lib/i18n/translations";
 import {
   DEFAULT_SETTINGS,
   loadInterviews,
@@ -35,13 +39,6 @@ import {
   Trophy,
 } from "lucide-react";
 
-const LEVELS = [
-  "校招/应届",
-  "社招初级（1-3 年）",
-  "社招中级（3-5 年）",
-  "社招资深（5+ 年）",
-];
-
 const ALL_CATS: Category[] = ["training", "inference", "hardware", "system"];
 const DURATIONS = [15, 30, 45];
 
@@ -52,11 +49,19 @@ interface ChatMessage {
 
 type Stage = "config" | "interviewing" | "scoring" | "done";
 
+type LevelKey = "fresh" | "junior" | "mid" | "senior";
+const LEVEL_KEYS: LevelKey[] = ["fresh", "junior", "mid", "senior"];
+
 export default function InterviewPage() {
+  const { lang, t } = useLang();
+
   const [stage, setStage] = useState<Stage>("config");
-  const [level, setLevel] = useState(LEVELS[0]);
+  const [levelKey, setLevelKey] = useState<LevelKey>("fresh");
   const [focus, setFocus] = useState<Category[]>(["inference"]);
   const [duration, setDuration] = useState(30);
+
+  // 当前选中级别的本地化 label（每次渲染读取最新语言）
+  const level = t.interview.levels[levelKey];
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -105,7 +110,7 @@ export default function InterviewPage() {
     setMessages([]);
     setScorecard(null);
     // 让 AI 先开口
-    await sendInternal([], "我准备好了，请开始第一个问题。", { level, focus, duration });
+    await sendInternal([], t.interview.confirmStartFirstMsg, { level, focus, duration });
   }
 
   async function sendInternal(
@@ -123,16 +128,17 @@ export default function InterviewPage() {
         body: JSON.stringify({
           mode: "interview",
           messages: next,
+          language: lang,
           interview: {
             level: cfg.level,
-            focus: cfg.focus.map((c) => CATEGORY_META[c].label),
+            focus: cfg.focus.map((c) => t.categories[c].label),
             durationMin: cfg.duration,
           },
         }),
       });
       if (!res.ok || !res.body) {
         const err = await res.text();
-        setMessages((m) => [...m, { role: "assistant", content: `[请求失败] ${err}` }]);
+        setMessages((m) => [...m, { role: "assistant", content: `[${t.chat.requestFailed}] ${err}` }]);
         return;
       }
       const reader = res.body.getReader();
@@ -169,9 +175,10 @@ export default function InterviewPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages,
+          language: lang,
           config: {
             level,
-            focus: focus.map((c) => CATEGORY_META[c].label),
+            focus: focus.map((c) => t.categories[c].label),
             durationMin: duration,
           },
         }),
@@ -183,7 +190,7 @@ export default function InterviewPage() {
         at: Date.now(),
         config: {
           level,
-          focus: focus.map((c) => CATEGORY_META[c].label),
+          focus: focus.map((c) => t.categories[c].label),
           durationMin: duration,
         },
         messages,
@@ -192,7 +199,7 @@ export default function InterviewPage() {
       setHistory(loadInterviews());
       setStage("done");
     } catch (e) {
-      alert(`生成 scorecard 失败：${(e as Error).message}`);
+      alert(t.interview.saveScorecardFailed((e as Error).message));
       setStage("interviewing");
     }
   }
@@ -207,34 +214,34 @@ export default function InterviewPage() {
   if (stage === "config") {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-1">模拟面试</h1>
+        <h1 className="text-2xl font-bold mb-1">{t.interview.title}</h1>
         <p className="text-zinc-500 dark:text-zinc-400 mb-6">
-          配置面试参数 → AI 扮演面试官 → 结束后生成可量化的 scorecard。
+          {t.interview.subtitle}
         </p>
 
         <div className="space-y-6 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-5">
           <div>
-            <label className="text-sm font-semibold mb-2 block">目标级别</label>
+            <label className="text-sm font-semibold mb-2 block">{t.interview.level}</label>
             <div className="flex flex-wrap gap-2">
-              {LEVELS.map((l) => (
+              {LEVEL_KEYS.map((k) => (
                 <button
-                  key={l}
-                  onClick={() => setLevel(l)}
+                  key={k}
+                  onClick={() => setLevelKey(k)}
                   className={
                     "px-3 py-1.5 text-sm rounded-md border " +
-                    (level === l
+                    (levelKey === k
                       ? "bg-blue-600 text-white border-blue-600"
                       : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")
                   }
                 >
-                  {l}
+                  {t.interview.levels[k]}
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="text-sm font-semibold mb-2 block">侧重方向（可多选）</label>
+            <label className="text-sm font-semibold mb-2 block">{t.interview.focus}</label>
             <div className="flex flex-wrap gap-2">
               {ALL_CATS.map((c) => {
                 const m = CATEGORY_META[c];
@@ -250,7 +257,7 @@ export default function InterviewPage() {
                         : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")
                     }
                   >
-                    <span>{m.emoji}</span> {m.label}
+                    <span>{m.emoji}</span> {t.categories[c].label}
                   </button>
                 );
               })}
@@ -258,7 +265,7 @@ export default function InterviewPage() {
           </div>
 
           <div>
-            <label className="text-sm font-semibold mb-2 block">计划时长</label>
+            <label className="text-sm font-semibold mb-2 block">{t.interview.duration}</label>
             <div className="flex gap-2">
               {DURATIONS.map((d) => (
                 <button
@@ -271,7 +278,7 @@ export default function InterviewPage() {
                       : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")
                   }
                 >
-                  {d} 分钟
+                  {t.interview.durationMin(d)}
                 </button>
               ))}
             </div>
@@ -282,7 +289,7 @@ export default function InterviewPage() {
             disabled={focus.length === 0}
             className="w-full py-2.5 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-2"
           >
-            <PlayCircle className="w-5 h-5" /> 开始面试
+            <PlayCircle className="w-5 h-5" /> {t.interview.start}
           </button>
         </div>
 
@@ -330,8 +337,8 @@ export default function InterviewPage() {
     <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col h-[calc(100vh-100px)]">
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm text-zinc-500">
-          {level} · {focus.map((c) => CATEGORY_META[c].label).join("/")} ·{" "}
-          {duration} 分钟
+          {level} · {focus.map((c) => t.categories[c].label).join("/")} ·{" "}
+          {t.interview.durationMin(duration)}
         </div>
         <button
           onClick={finishAndScore}
@@ -340,11 +347,11 @@ export default function InterviewPage() {
         >
           {stage === "scoring" ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" /> 生成报告中...
+              <Loader2 className="w-4 h-4 animate-spin" /> {t.interview.generatingScorecard}
             </>
           ) : (
             <>
-              <Square className="w-4 h-4" /> 结束并评分
+              <Square className="w-4 h-4" /> {t.interview.finishAndScore}
             </>
           )}
         </button>
@@ -370,7 +377,7 @@ export default function InterviewPage() {
               {m.role === "assistant" ? (
                 <>
                   <div className="text-xs font-semibold mb-1 text-zinc-500">
-                    🎙 面试官
+                    {t.interview.interviewer}
                   </div>
                   <Markdown>{m.content || "..."}</Markdown>
                 </>
@@ -382,7 +389,7 @@ export default function InterviewPage() {
         ))}
         {loading && messages[messages.length - 1]?.role === "user" && (
           <div className="text-zinc-400 text-sm flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> 面试官思考中...
+            <Loader2 className="w-4 h-4 animate-spin" /> {t.interview.interviewerThinking}
           </div>
         )}
       </div>
@@ -398,7 +405,7 @@ export default function InterviewPage() {
             }
           }}
           rows={3}
-          placeholder="说出你的回答（Enter 发送，Shift+Enter 换行）"
+          placeholder={t.interview.sendShortcutHint}
           className="flex-1 p-3 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm outline-none focus:border-blue-500 resize-none"
         />
         <button
@@ -411,7 +418,7 @@ export default function InterviewPage() {
           ) : (
             <Send className="w-4 h-4" />
           )}
-          发送
+          {t.chat.send}
         </button>
       </div>
     </div>
@@ -427,11 +434,12 @@ function ScorecardView({
   config: { level: string; focus: Category[]; duration: number };
   onRestart: () => void;
 }) {
+  const { lang, t } = useLang();
   const dimLabels: Record<keyof Scorecard["dimensions"], string> = {
-    concept_clarity: "概念清晰度",
-    system_design: "系统设计",
-    practical_experience: "实战经验",
-    communication: "表达",
+    concept_clarity: t.interview.dimConceptClarity,
+    system_design: t.interview.dimSystemDesign,
+    practical_experience: t.interview.dimPracticalExperience,
+    communication: t.interview.dimCommunication,
   };
   const overallColor =
     scorecard.overall >= 80
@@ -444,24 +452,24 @@ function ScorecardView({
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Trophy className="w-6 h-6 text-amber-500" /> 面试评分报告
+          <Trophy className="w-6 h-6 text-amber-500" /> {t.interview.scoreReport}
         </h1>
         <button
           onClick={onRestart}
           className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
-          再来一场
+          {t.interview.restart}
         </button>
       </div>
 
       <div className="text-xs text-zinc-500">
-        {config.level} · {config.focus.map((c) => CATEGORY_META[c].label).join("/")} ·{" "}
-        {config.duration} 分钟
+        {config.level} · {config.focus.map((c) => t.categories[c].label).join("/")} ·{" "}
+        {t.interview.durationMin(config.duration)}
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-5 flex items-center gap-6">
         <div>
-          <div className="text-xs text-zinc-500">总评</div>
+          <div className="text-xs text-zinc-500">{t.interview.overall}</div>
           <div className={`text-5xl font-bold ${overallColor}`}>
             {scorecard.overall}
             <span className="text-lg text-zinc-400">/100</span>
@@ -496,16 +504,16 @@ function ScorecardView({
       </div>
 
       {scorecard.strengths.length > 0 && (
-        <Section title="💪 亮点" tone="emerald" items={scorecard.strengths} />
+        <Section title={t.interview.strengths} tone="emerald" items={scorecard.strengths} />
       )}
       {scorecard.weaknesses.length > 0 && (
-        <Section title="📉 短板" tone="rose" items={scorecard.weaknesses} />
+        <Section title={t.interview.weaknesses} tone="rose" items={scorecard.weaknesses} />
       )}
 
       {scorecard.knowledge_gaps.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-zinc-500 mb-2">
-            📍 暴露的知识盲点（建议优先复习）
+            {t.interview.knowledgeGaps}
           </h2>
           <div className="space-y-2">
             {scorecard.knowledge_gaps.map((g, i) => {
@@ -524,13 +532,13 @@ function ScorecardView({
                         href={`/learn/${found.topic.id}`}
                         className="text-blue-600 hover:underline"
                       >
-                        → 去学习「{found.checkpoint.name}」
+                        → {t.interview.gotoStudy(localizedCheckpointName(found.checkpoint, lang))}
                       </Link>
                       <Link
                         href={`/quiz?cp=${found.checkpoint.id}`}
                         className="text-blue-600 hover:underline ml-3"
                       >
-                        → 针对它做一道练习
+                        → {t.interview.quizMeOnIt}
                       </Link>
                     </div>
                   )}
@@ -543,7 +551,7 @@ function ScorecardView({
 
       {scorecard.next_steps.length > 0 && (
         <Section
-          title="🚀 下一步建议"
+          title={t.interview.nextSteps}
           tone="blue"
           items={scorecard.next_steps}
         />
@@ -601,6 +609,7 @@ function HistorySection({
   onSelectHistory: (s: InterviewSession) => void;
   onDelete: (id: string) => void;
 }) {
+  const t = useLang().t;
   const stats = computeInterviewStats(history);
 
   return (
@@ -608,13 +617,13 @@ function HistorySection({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-500 flex items-center gap-1.5">
           <BarChart3 className="w-3.5 h-3.5" />
-          历史与复盘（{history.length}）
+          {t.interview.historyAnalytics(history.length)}
         </h2>
         <button
           onClick={onToggleSettings}
           className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1"
         >
-          <FolderCog className="w-3.5 h-3.5" /> 设置
+          <FolderCog className="w-3.5 h-3.5" /> {t.common.settings}
         </button>
       </div>
 
@@ -631,7 +640,7 @@ function HistorySection({
             session={h}
             onOpen={() => onSelectHistory(h)}
             onDelete={() => {
-              if (confirm("从历史中移除这条记录？")) onDelete(h.id);
+              if (confirm(t.interview.confirmRemoveHistory)) onDelete(h.id);
             }}
           />
         ))}
@@ -647,17 +656,18 @@ function SettingsCard({
   settings: AppSettings;
   onUpdate: (s: AppSettings) => void;
 }) {
+  const t = useLang().t;
   const [draft, setDraft] = useState(settings.interviewExportDir);
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 rounded-md p-3 bg-white dark:bg-zinc-900 text-sm">
       <label className="text-xs font-semibold text-zinc-500 block mb-1">
-        面试历史导出目录
+        {t.interview.exportDirLabel}
       </label>
       <div className="flex gap-2 items-center">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="模拟面试历史"
+          placeholder={t.interview.exportDirPlaceholder}
           className="flex-1 px-2 py-1 text-xs rounded border border-zinc-300 dark:border-zinc-700 bg-transparent outline-none focus:border-blue-500 font-mono"
         />
         <button
@@ -667,7 +677,7 @@ function SettingsCard({
           disabled={draft.trim() === settings.interviewExportDir}
           className="px-2.5 py-1 text-xs rounded bg-blue-600 text-white disabled:opacity-40"
         >
-          保存
+          {t.common.save}
         </button>
         <button
           onClick={() => {
@@ -679,13 +689,11 @@ function SettingsCard({
           }}
           className="px-2.5 py-1 text-xs rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
-          还原
+          {t.common.restoreDefault}
         </button>
       </div>
       <p className="mt-2 text-[11px] text-zinc-500">
-        相对于笔记库根路径（KNOWLEDGE_LIBRARY_PATH，默认{" "}
-        <code>~/Documents/knowlege_library</code>
-        ）。不存在的子目录会自动创建。
+        {t.interview.exportDirHelp}
       </p>
     </div>
   );
@@ -696,50 +704,51 @@ function AnalyticsCard({
 }: {
   stats: ReturnType<typeof computeInterviewStats>;
 }) {
+  const { lang, t } = useLang();
   if (!stats.avgDims || stats.avgOverall == null) return null;
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 rounded-md p-3 bg-white dark:bg-zinc-900">
       <div className="flex items-baseline gap-2 mb-2">
-        <span className="text-xs text-zinc-500">基于 {stats.count} 次完成的面试</span>
+        <span className="text-xs text-zinc-500">{t.interview.basedOnNSessions(stats.count)}</span>
         <span className="text-zinc-400">·</span>
         <span className="text-xs text-zinc-500">
-          平均总评：<span className="text-emerald-600 font-bold">{stats.avgOverall}</span>
+          {t.interview.avgOverall}：<span className="text-emerald-600 font-bold">{stats.avgOverall}</span>
         </span>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-        <DimMini label="概念清晰度" value={stats.avgDims.concept_clarity} />
-        <DimMini label="系统设计" value={stats.avgDims.system_design} />
-        <DimMini label="实战经验" value={stats.avgDims.practical_experience} />
-        <DimMini label="表达" value={stats.avgDims.communication} />
+        <DimMini label={t.interview.dimConceptClarity} value={stats.avgDims.concept_clarity} />
+        <DimMini label={t.interview.dimSystemDesign} value={stats.avgDims.system_design} />
+        <DimMini label={t.interview.dimPracticalExperience} value={stats.avgDims.practical_experience} />
+        <DimMini label={t.interview.dimCommunication} value={stats.avgDims.communication} />
       </div>
 
       {stats.topGaps.length > 0 && (
         <div className="mb-3">
           <div className="text-xs font-semibold text-zinc-500 mb-1">
-            高频盲点（按出现次数）
+            {t.interview.topGaps}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {stats.topGaps.map((g) => (
-              <Link
-                key={g.checkpoint_id + g.count}
-                href={
-                  getCheckpoint(g.checkpoint_id)
-                    ? `/learn/${getCheckpoint(g.checkpoint_id)!.topic.id}`
-                    : "#"
-                }
-                className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900"
-              >
-                {g.checkpointName ?? g.checkpoint_id}
-                <span className="ml-1 text-amber-600">×{g.count}</span>
-              </Link>
-            ))}
+            {stats.topGaps.map((g) => {
+              const cp = getCheckpoint(g.checkpoint_id);
+              const display = cp ? localizedCheckpointName(cp.checkpoint, lang) : g.checkpoint_id;
+              return (
+                <Link
+                  key={g.checkpoint_id + g.count}
+                  href={cp ? `/learn/${cp.topic.id}` : "#"}
+                  className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900"
+                >
+                  {display}
+                  <span className="ml-1 text-amber-600">×{g.count}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}
 
       {stats.trend.length >= 2 && (
         <div>
-          <div className="text-xs font-semibold text-zinc-500 mb-1">趋势</div>
+          <div className="text-xs font-semibold text-zinc-500 mb-1">{t.interview.trend}</div>
           <TrendBars trend={stats.trend} />
         </div>
       )}
@@ -811,6 +820,7 @@ function HistoryRow({
   onOpen: () => void;
   onDelete: () => void;
 }) {
+  const t = useLang().t;
   const sc = session.scorecard;
   const scoreColor =
     sc && sc.overall >= 80
@@ -823,11 +833,11 @@ function HistoryRow({
       <button onClick={onOpen} className="flex-1 min-w-0 text-left">
         <div className="text-sm font-medium truncate">
           {session.config.level} · {session.config.focus.join("/")} ·{" "}
-          {session.config.durationMin}min
+          {t.interview.durationMin(session.config.durationMin)}
         </div>
         <div className="text-xs text-zinc-500">
           {new Date(session.at).toLocaleString()} ·{" "}
-          {session.messages.length - 1} 条对话
+          {t.interview.transcriptCountShort(session.messages.length - 1)}
         </div>
       </button>
       {sc && (
@@ -839,14 +849,14 @@ function HistoryRow({
       <div className="flex items-center gap-1">
         <button
           onClick={onOpen}
-          title="查看详情"
+          title={t.common.preview}
           className="p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <Eye className="w-4 h-4" />
         </button>
         <button
           onClick={onDelete}
-          title="从历史中移除"
+          title={t.common.delete}
           className="p-1.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950 text-rose-600"
         >
           <Trash2 className="w-4 h-4" />

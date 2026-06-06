@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { CATEGORY_META, type Topic } from "@/lib/knowledge";
+import {
+  CATEGORY_META,
+  localizedTopicSummary,
+  localizedTopicTitle,
+  type Topic,
+} from "@/lib/knowledge";
 import type { TopicStat } from "@/lib/storage";
+import { useLang } from "@/lib/i18n/context";
 
 export function TopicCard({
   topic,
@@ -11,7 +17,9 @@ export function TopicCard({
   topic: Topic;
   stat?: TopicStat;
 }) {
+  const { lang, t } = useLang();
   const meta = CATEGORY_META[topic.category];
+  const catLabel = t.categories[topic.category].label;
   const total = stat?.total ?? topic.checkpoints.length;
   const mastered = stat?.mastered ?? 0;
   const learning = stat?.learning ?? 0;
@@ -25,13 +33,13 @@ export function TopicCard({
     >
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">{meta.emoji}</span>
-        <span className="text-xs text-zinc-500">{meta.label}</span>
+        <span className="text-xs text-zinc-500">{catLabel}</span>
       </div>
       <div className="font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
-        {topic.title}
+        {localizedTopicTitle(topic, lang)}
       </div>
       <div className="text-sm text-zinc-500 dark:text-zinc-400 mb-3 line-clamp-2">
-        {topic.summary}
+        {localizedTopicSummary(topic, lang)}
       </div>
       <div className="flex items-center gap-2 text-xs text-zinc-500">
         <div className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -40,20 +48,22 @@ export function TopicCard({
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="tabular-nums">{mastered}/{total}</span>
+        <span className="tabular-nums">
+          {t.mastery.progressLabel({ mastered, total })}
+        </span>
       </div>
       {(learning > 0 || gap > 0) && (
         <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
           {learning > 0 && (
             <span>
               <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1" />
-              学习中 {learning}
+              {t.mastery.learningCount(learning)}
             </span>
           )}
           {gap > 0 && (
             <span>
               <span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1" />
-              盲点 {gap}
+              {t.mastery.gapCount(gap)}
             </span>
           )}
         </div>

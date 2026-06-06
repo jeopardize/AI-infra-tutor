@@ -1,4 +1,9 @@
-import type { Category, Checkpoint, Topic } from "./types";
+import type { Category, Checkpoint, Topic, Lang } from "./types";
+import {
+  localizedCheckpointName,
+  localizedTopicSummary,
+  localizedTopicTitle,
+} from "./types";
 import { trainingTopics } from "./training";
 import { inferenceTopics } from "./inference";
 import { hardwareTopics } from "./hardware";
@@ -37,14 +42,22 @@ export const ALL_CHECKPOINT_IDS: string[] = ALL_TOPICS.flatMap((t) =>
 );
 
 /** 生成给 Claude 的紧凑知识树（用于 system prompt） */
-export function compactKnowledgeTree(): string {
+export function compactKnowledgeTree(lang: Lang = "zh"): string {
   const lines: string[] = [];
   for (const topic of ALL_TOPICS) {
-    lines.push(`## [${topic.category}] ${topic.id} — ${topic.title}`);
-    lines.push(topic.summary);
+    lines.push(
+      `## [${topic.category}] ${topic.id} — ${localizedTopicTitle(topic, lang)}`,
+    );
+    lines.push(localizedTopicSummary(topic, lang));
     for (const cp of topic.checkpoints) {
-      lines.push(`  - checkpoint \`${cp.id}\` (${cp.name})`);
-      lines.push(`    面试角度: ${cp.interviewAngles.join(" / ")}`);
+      lines.push(`  - checkpoint \`${cp.id}\` (${localizedCheckpointName(cp, lang)})`);
+      const angles =
+        lang === "en" && cp.interviewAnglesEn
+          ? cp.interviewAnglesEn
+          : cp.interviewAngles;
+      lines.push(
+        `    ${lang === "en" ? "interview angles" : "面试角度"}: ${angles.join(" / ")}`,
+      );
     }
     lines.push("");
   }
