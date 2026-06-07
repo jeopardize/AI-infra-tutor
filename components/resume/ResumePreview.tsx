@@ -20,7 +20,6 @@ const PRINT_STYLES = `
     width: 210mm !important;
     height: auto !important;
     margin: 0 !important;
-    padding: 0 !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }
@@ -246,7 +245,6 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
             "'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',sans-serif",
           fontSize: "11pt",
           boxSizing: "border-box",
-          overflow: "hidden",
         }}
       >
         {visibleSections.map((sectionId) => renderSection(sectionId))}

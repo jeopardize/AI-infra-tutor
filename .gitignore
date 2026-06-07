@@ -52,6 +52,9 @@ Thumbs.db
 # vercel
 .vercel
 
+# runtime data files (persisted by server APIs)
+.data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

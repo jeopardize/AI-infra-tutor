@@ -333,11 +333,14 @@ export function ResumeEditor({ data, onChange, onAutoFit, autoFitStatus }: Props
     }
   }
 
+  const draggableSections = data.sectionOrder.filter((s) => s !== "settings");
+
   return (
     <div className="space-y-4">
-      <DraggableList items={data.sectionOrder} keyFn={(s) => s} onReorder={(items) => onChange({...data, sectionOrder: items})}>
+      <DraggableList items={draggableSections} keyFn={(s) => s} onReorder={(items) => onChange({...data, sectionOrder: [...items, "settings"]})}>
         {(sectionId, _idx, isDragging) => renderSection(sectionId, isDragging)}
       </DraggableList>
+      {renderSection("settings", false)}
     </div>
   );
 }

@@ -111,10 +111,10 @@ function ResumeShell() {
   }, [isPrinting]);
 
   return (
-    <div className={`flex flex-col md:flex-row gap-6 ${isPrinting ? "print-mode" : ""}`}>
-      {/* Left: Editor — 随页面滚动 */}
+    <div className={`flex flex-col xl:flex-row gap-6 ${isPrinting ? "print-mode" : ""}`}>
+      {/* Left: Editor — 窄屏全宽，宽屏固定 420px */}
       {!isPrinting && (
-        <div className="w-full md:w-[420px] shrink-0 px-4 md:px-0 space-y-4">
+        <div className="w-full xl:w-[420px] shrink-0 px-4 xl:px-0 space-y-4">
           <div>
             <h1 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">
               {t.resume.title}
@@ -140,15 +140,13 @@ function ResumeShell() {
         </div>
       )}
 
-      {/* Right: Preview — sticky 固定，始终可见 */}
-      <div className="flex-1 min-w-0 self-start md:sticky md:top-20">
-        <div className="flex flex-col items-center px-4 md:px-0">
+      {/* Right: Preview — 窄屏全宽（标准 A4），宽屏 sticky 固定 */}
+      <div className="flex-1 min-w-0 self-start xl:sticky xl:top-20">
+        <div className="flex flex-col items-center px-4 xl:px-0">
           {!isPrinting && (
             <div className="mb-2 text-xs text-zinc-400">{t.resume.fillTip}</div>
           )}
-          <div className={`origin-top ${isPrinting ? "" : "scale-[0.8]"}`}>
-            <ResumePreview data={data} isPrinting={isPrinting} previewRef={previewRef} />
-          </div>
+          <ResumePreview data={data} isPrinting={isPrinting} previewRef={previewRef} />
         </div>
       </div>
     </div>
