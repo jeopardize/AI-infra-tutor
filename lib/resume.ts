@@ -2,6 +2,19 @@
 
 // -------- Types --------
 
+export const DEFAULT_SECTION_ORDER = [
+  "personalInfo",
+  "education",
+  "workExperience",
+  "projectExperience",
+  "skills",
+  "research",
+  "honors",
+  "settings",
+] as const;
+
+export type SectionId = (typeof DEFAULT_SECTION_ORDER)[number];
+
 export interface ResumePersonalInfo {
   name: string;
   phone: string;
@@ -21,14 +34,37 @@ export interface ResumeEducation {
   gpa: string;
 }
 
+export interface ResumeWorkExperience {
+  id: string;
+  company: string;
+  department: string;
+  position: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+}
+
 export interface ResumeProject {
   id: string;
   name: string;
   role: string;
   startDate: string;
   endDate: string;
-  techStack: string;
   description: string;
+}
+
+export interface ResumeResearch {
+  id: string;
+  title: string;
+  venue: string;
+  date: string;
+  description: string;
+}
+
+export interface ResumeHonor {
+  id: string;
+  name: string;
+  date: string;
 }
 
 export interface ResumeSettings {
@@ -39,8 +75,15 @@ export interface ResumeSettings {
 export interface ResumeData {
   personalInfo: ResumePersonalInfo;
   education: ResumeEducation[];
+  workExperience: ResumeWorkExperience[];
+  projectExperience: ResumeProject[];
+  skills: string;
+  research: ResumeResearch[];
+  honors: ResumeHonor[];
+  /** @deprecated 保留用于向后兼容 */
   projects: ResumeProject[];
   settings: ResumeSettings;
+  sectionOrder: SectionId[];
 }
 
 // -------- Defaults --------
@@ -58,11 +101,17 @@ export function createDefaultResumeData(): ResumeData {
       links: "",
     },
     education: [],
+    workExperience: [],
+    projectExperience: [],
+    skills: "",
+    research: [],
+    honors: [],
     projects: [],
     settings: {
       marginMm: 20,
       lineSpacing: 1.35,
     },
+    sectionOrder: [...DEFAULT_SECTION_ORDER],
   };
 }
 

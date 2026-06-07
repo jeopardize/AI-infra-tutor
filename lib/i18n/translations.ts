@@ -269,15 +269,31 @@ export interface Dict {
     startDate: string;
     endDate: string;
     gpa: string;
+    date: string;
     addEducation: string;
     removeEducation: string;
-    project: string;
-    projectName: string;
-    role: string;
-    techStack: string;
+    workExperience: string;
+    company: string;
+    department: string;
+    position: string;
+    addExperience: string;
+    removeExperience: string;
     description: string;
+    projectExperience: string;
+    projectName: string;
     addProject: string;
     removeProject: string;
+    skills: string;
+    skillsHint: string;
+    research: string;
+    researchTitle: string;
+    researchVenue: string;
+    addResearch: string;
+    removeResearch: string;
+    honors: string;
+    honorName: string;
+    addHonor: string;
+    removeHonor: string;
     settings: string;
     margin: string;
     lineSpacing: string;
@@ -538,15 +554,31 @@ const zh: Dict = {
     startDate: "开始时间",
     endDate: "结束时间",
     gpa: "GPA",
+    date: "时间",
     addEducation: "添加学历",
     removeEducation: "移除此学历",
-    project: "项目经历",
+    workExperience: "工作经历",
+    company: "公司",
+    department: "部门",
+    position: "岗位",
+    addExperience: "添加工作经历",
+    removeExperience: "移除此工作经历",
+    description: "工作描述",
+    projectExperience: "项目经历",
     projectName: "项目名称",
-    role: "你的角色",
-    techStack: "技术栈",
-    description: "项目描述",
     addProject: "添加项目",
     removeProject: "移除此项目",
+    skills: "专业技能",
+    skillsHint: "每行一条，以 - 开头生成圆点",
+    research: "科研成果",
+    researchTitle: "成果名称",
+    researchVenue: "发表期刊/会议",
+    addResearch: "添加成果",
+    removeResearch: "移除此成果",
+    honors: "获得荣誉",
+    honorName: "荣誉名称",
+    addHonor: "添加荣誉",
+    removeHonor: "移除此荣誉",
     settings: "排版设置",
     margin: "页边距",
     lineSpacing: "行间距",
@@ -828,15 +860,31 @@ const en: Dict = {
     startDate: "Start",
     endDate: "End",
     gpa: "GPA",
+    date: "Date",
     addEducation: "Add Education",
     removeEducation: "Remove",
-    project: "Projects",
-    projectName: "Project Name",
-    role: "Your Role",
-    techStack: "Tech Stack",
+    workExperience: "Work Experience",
+    company: "Company",
+    department: "Department",
+    position: "Position",
+    addExperience: "Add Experience",
+    removeExperience: "Remove",
     description: "Description",
+    projectExperience: "Projects",
+    projectName: "Project Name",
     addProject: "Add Project",
     removeProject: "Remove",
+    skills: "Skills",
+    skillsHint: "One per line, start with - for bullets",
+    research: "Research",
+    researchTitle: "Title",
+    researchVenue: "Venue",
+    addResearch: "Add Research",
+    removeResearch: "Remove",
+    honors: "Honors",
+    honorName: "Honor",
+    addHonor: "Add Honor",
+    removeHonor: "Remove",
     settings: "Layout",
     margin: "Margin",
     lineSpacing: "Line Spacing",

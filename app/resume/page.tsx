@@ -9,7 +9,7 @@ import { ResumePreview } from "@/components/resume/ResumePreview";
 
 export default function ResumePage() {
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="md:max-w-7xl md:mx-auto md:px-4 py-4 md:py-6">
       <ResumeShell />
     </div>
   );
@@ -112,9 +112,9 @@ function ResumeShell() {
 
   return (
     <div className={`flex flex-col md:flex-row gap-6 ${isPrinting ? "print-mode" : ""}`}>
-      {/* Left: Editor */}
+      {/* Left: Editor — 随页面滚动 */}
       {!isPrinting && (
-        <div className="w-full md:w-[420px] shrink-0 space-y-4">
+        <div className="w-full md:w-[420px] shrink-0 px-4 md:px-0 space-y-4">
           <div>
             <h1 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">
               {t.resume.title}
@@ -140,12 +140,16 @@ function ResumeShell() {
         </div>
       )}
 
-      {/* Right: Preview */}
-      <div className={`flex-1 min-w-0 ${isPrinting ? "w-full" : ""}`}>
-        {!isPrinting && (
-          <div className="mb-2 text-xs text-zinc-400">{t.resume.fillTip}</div>
-        )}
-        <ResumePreview data={data} isPrinting={isPrinting} previewRef={previewRef} />
+      {/* Right: Preview — sticky 固定，始终可见 */}
+      <div className="flex-1 min-w-0 self-start md:sticky md:top-20">
+        <div className="flex flex-col items-center px-4 md:px-0">
+          {!isPrinting && (
+            <div className="mb-2 text-xs text-zinc-400">{t.resume.fillTip}</div>
+          )}
+          <div className={`origin-top ${isPrinting ? "" : "scale-[0.8]"}`}>
+            <ResumePreview data={data} isPrinting={isPrinting} previewRef={previewRef} />
+          </div>
+        </div>
       </div>
     </div>
   );
