@@ -1,0 +1,26 @@
+{
+  "personalInfo": {
+    "name": "XXX",
+    "phone": "123456789",
+    "email": "123456788@163.com",
+    "jobTarget": "ai infra",
+    "summary": "",
+    "links": ""
+  },
+  "education": [
+    {
+      "id": "r-1780821395110-84cn",
+      "school": "xxxx",
+      "degree": "硕士",
+      "major": "计算机科学与技术",
+      "startDate": "2022.09",
+      "endDate": "2025.06",
+      "gpa": "xx/4.0"
+    }
+  ],
+  "projects": [],
+  "settings": {
+    "marginMm": 20,
+    "lineSpacing": 1.35
+  }
+}

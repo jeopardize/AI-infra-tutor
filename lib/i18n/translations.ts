@@ -31,6 +31,8 @@ export interface Dict {
     quiz: string;
     interview: string;
     library: string;
+    bank: string;
+    resume: string;
   };
 
   // -------- dashboard --------
@@ -207,6 +209,83 @@ export interface Dict {
     charsCount: (n: number) => string;
     updatedAt: (s: string) => string;
   };
+
+  // -------- question bank --------
+  bank: {
+    title: string;
+    subtitle: string;
+    addTab: string;
+    browseTab: string;
+    category: string;
+    categoryPlaceholder: string;
+    newCategory: string;
+    singleMode: string;
+    batchMode: string;
+    questionZh: string;
+    questionEn: string;
+    answerZh: string;
+    answerEn: string;
+    aiAutoComplete: string;
+    aiAutoCompleteAll: string;
+    aiCompleting: string;
+    save: string;
+    saveSuccess: string;
+    saveFailed: string;
+    batchPlaceholder: string;
+    batchFormatHint: string;
+    batchParseSuccess: (n: number) => string;
+    batchParseFailed: string;
+    search: string;
+    searchPlaceholder: string;
+    allCategories: string;
+    exportJson: string;
+    exportMarkdown: string;
+    edit: string;
+    delete: string;
+    deleteConfirm: string;
+    noQuestions: string;
+    expand: string;
+    collapse: string;
+    copy: string;
+    copied: string;
+  };
+
+  // -------- resume --------
+  resume: {
+    title: string;
+    subtitle: string;
+    personalInfo: string;
+    name: string;
+    phone: string;
+    email: string;
+    jobTarget: string;
+    summary: string;
+    links: string;
+    linksHint: string;
+    education: string;
+    school: string;
+    degree: string;
+    major: string;
+    startDate: string;
+    endDate: string;
+    gpa: string;
+    addEducation: string;
+    removeEducation: string;
+    project: string;
+    projectName: string;
+    role: string;
+    techStack: string;
+    description: string;
+    addProject: string;
+    removeProject: string;
+    settings: string;
+    margin: string;
+    lineSpacing: string;
+    autoFit: string;
+    autoFitting: string;
+    exportPdf: string;
+    fillTip: string;
+  };
 }
 
 const zh: Dict = {
@@ -237,6 +316,8 @@ const zh: Dict = {
     quiz: "查漏补缺",
     interview: "模拟面试",
     library: "笔记库",
+    bank: "题库",
+    resume: "简历",
   },
   dashboard: {
     welcomeTitle: "欢迎，开始你的 AI Infra 学习之旅",
@@ -401,6 +482,79 @@ const zh: Dict = {
     charsCount: (n) => `${n} 字符`,
     updatedAt: (s) => `更新于 ${s}`,
   },
+  bank: {
+    title: "题库管理",
+    subtitle: "维护你的中英双语面试题库",
+    addTab: "添加题目",
+    browseTab: "浏览题库",
+    category: "分类",
+    categoryPlaceholder: "选择已有分类...",
+    newCategory: "新分类",
+    singleMode: "单题录入",
+    batchMode: "批量录入",
+    questionZh: "问题（中文）",
+    questionEn: "问题（English）",
+    answerZh: "答案（中文）",
+    answerEn: "答案（English）",
+    aiAutoComplete: "AI 补全",
+    aiAutoCompleteAll: "AI 补全全部",
+    aiCompleting: "AI 补全中...",
+    save: "保存到题库",
+    saveSuccess: "已保存",
+    saveFailed: "保存失败",
+    batchPlaceholder: "格式：分类 || 问题(zh) || 问题(en) || 答案(zh) || 答案(en)",
+    batchFormatHint: "每行一条，用 || 分隔：分类 | 问题(中文) | 问题(English) | 答案(中文) | 答案(English)",
+    batchParseSuccess: (n) => `解析成功，共 ${n} 条`,
+    batchParseFailed: "解析失败，请检查格式",
+    search: "搜索",
+    searchPlaceholder: "搜索题目内容...",
+    allCategories: "全部分类",
+    exportJson: "导出 JSON",
+    exportMarkdown: "导出 Markdown",
+    edit: "编辑",
+    delete: "删除",
+    deleteConfirm: "确定删除这道题？",
+    noQuestions: "题库为空，去「添加题目」页面录入吧",
+    expand: "展开",
+    collapse: "收起",
+    copy: "复制",
+    copied: "已复制",
+  },
+  resume: {
+    title: "简历编辑",
+    subtitle: "在线编辑并导出单页简历",
+    personalInfo: "个人信息",
+    name: "姓名",
+    phone: "电话",
+    email: "邮箱",
+    jobTarget: "求职意向",
+    summary: "个人简介",
+    links: "链接（每行一条）",
+    linksHint: "GitHub / 博客 / 作品链接，每行一个",
+    education: "学历",
+    school: "学校",
+    degree: "学位",
+    major: "专业",
+    startDate: "开始时间",
+    endDate: "结束时间",
+    gpa: "GPA",
+    addEducation: "添加学历",
+    removeEducation: "移除此学历",
+    project: "项目经历",
+    projectName: "项目名称",
+    role: "你的角色",
+    techStack: "技术栈",
+    description: "项目描述",
+    addProject: "添加项目",
+    removeProject: "移除此项目",
+    settings: "排版设置",
+    margin: "页边距",
+    lineSpacing: "行间距",
+    autoFit: "自动排版",
+    autoFitting: "正在计算...",
+    exportPdf: "导出 PDF",
+    fillTip: "填写左侧信息，右侧会实时预览简历效果",
+  },
 };
 
 const en: Dict = {
@@ -431,6 +585,8 @@ const en: Dict = {
     quiz: "Quiz",
     interview: "Interview",
     library: "Library",
+    bank: "Question Bank",
+    resume: "Resume",
   },
   dashboard: {
     welcomeTitle: "Welcome — start your AI Infra learning journey",
@@ -615,6 +771,79 @@ const en: Dict = {
     reload: "Reload",
     charsCount: (n) => `${n} chars`,
     updatedAt: (s) => `Updated ${s}`,
+  },
+  bank: {
+    title: "Question Bank",
+    subtitle: "Manage your bilingual interview questions",
+    addTab: "Add Questions",
+    browseTab: "Browse Questions",
+    category: "Category",
+    categoryPlaceholder: "Select existing category...",
+    newCategory: "New Category",
+    singleMode: "Single Entry",
+    batchMode: "Batch Entry",
+    questionZh: "Question (中文)",
+    questionEn: "Question (English)",
+    answerZh: "Answer (中文)",
+    answerEn: "Answer (English)",
+    aiAutoComplete: "AI Complete",
+    aiAutoCompleteAll: "AI Complete All",
+    aiCompleting: "AI completing...",
+    save: "Save to Bank",
+    saveSuccess: "Saved",
+    saveFailed: "Save failed",
+    batchPlaceholder: "Format: category || question(zh) || question(en) || answer(zh) || answer(en)",
+    batchFormatHint: "One per line, separated by || : category | question(zh) | question(en) | answer(zh) | answer(en)",
+    batchParseSuccess: (n) => `Parsed successfully: ${n} items`,
+    batchParseFailed: "Parse failed, check format",
+    search: "Search",
+    searchPlaceholder: "Search questions...",
+    allCategories: "All Categories",
+    exportJson: "Export JSON",
+    exportMarkdown: "Export Markdown",
+    edit: "Edit",
+    delete: "Delete",
+    deleteConfirm: "Delete this question?",
+    noQuestions: "No questions yet. Go to 'Add Questions' tab to start.",
+    expand: "Expand",
+    collapse: "Collapse",
+    copy: "Copy",
+    copied: "Copied",
+  },
+  resume: {
+    title: "Resume Editor",
+    subtitle: "Edit and export a one-page resume",
+    personalInfo: "Personal Info",
+    name: "Name",
+    phone: "Phone",
+    email: "Email",
+    jobTarget: "Job Target",
+    summary: "Summary",
+    links: "Links (one per line)",
+    linksHint: "GitHub / Blog / portfolio links, one per line",
+    education: "Education",
+    school: "School",
+    degree: "Degree",
+    major: "Major",
+    startDate: "Start",
+    endDate: "End",
+    gpa: "GPA",
+    addEducation: "Add Education",
+    removeEducation: "Remove",
+    project: "Projects",
+    projectName: "Project Name",
+    role: "Your Role",
+    techStack: "Tech Stack",
+    description: "Description",
+    addProject: "Add Project",
+    removeProject: "Remove",
+    settings: "Layout",
+    margin: "Margin",
+    lineSpacing: "Line Spacing",
+    autoFit: "Auto Fit",
+    autoFitting: "Optimizing...",
+    exportPdf: "Export PDF",
+    fillTip: "Fill in the editor on the left; preview updates in real time on the right.",
   },
 };
 

@@ -2,13 +2,18 @@ import Anthropic from "@anthropic-ai/sdk";
 
 // 从环境变量读取模型名称，不限制具体模型
 // 如果不配置，使用通用的默认值（代理 API 可能会忽略此参数）
-export const DEFAULT_MODEL =
+const ENV_DEFAULT =
   process.env.PROJECT_ANTHROPIC_MODEL ||
-  process.env.ANTHROPIC_MODEL ;
+  process.env.ANTHROPIC_MODEL ||
+  "claude-sonnet-4-6";
 
-export const FAST_MODEL =
+const ENV_FAST =
   process.env.PROJECT_ANTHROPIC_FAST_MODEL ||
-  process.env.ANTHROPIC_FAST_MODEL ;
+  process.env.ANTHROPIC_FAST_MODEL ||
+  "claude-sonnet-4-6";
+
+export const DEFAULT_MODEL: string = ENV_DEFAULT;
+export const FAST_MODEL: string = ENV_FAST;
 
 let _client: Anthropic | null = null;
 

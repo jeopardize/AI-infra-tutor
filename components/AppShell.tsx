@@ -42,6 +42,18 @@ function Shell({ children }: { children: React.ReactNode }) {
             >
               {t.nav.library}
             </Link>
+            <Link
+              href="/bank"
+              className="hover:text-zinc-900 dark:hover:text-white"
+            >
+              {t.nav.bank}
+            </Link>
+            <Link
+              href="/resume"
+              className="hover:text-zinc-900 dark:hover:text-white"
+            >
+              {t.nav.resume}
+            </Link>
           </nav>
           <button
             onClick={() => setLang(lang === "zh" ? "en" : "zh")}

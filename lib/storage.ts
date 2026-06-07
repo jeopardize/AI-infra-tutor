@@ -158,6 +158,140 @@ export function saveSettings(s: AppSettings) {
   safeSet(KEY_SETTINGS, s);
 }
 
+// ---------------- Question Bank ----------------
+
+export const KEY_QUESTION_BANK = "ai-infra-tutor:question-bank:v1";
+
+export interface QuestionItem {
+  id: string;
+  category: string;
+  question: { zh: string; en: string };
+  answer: { zh: string; en: string };
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function loadQuestions(): QuestionItem[] {
+  return safeGet<QuestionItem[]>(KEY_QUESTION_BANK, []);
+}
+
+export function saveQuestions(items: QuestionItem[]) {
+  safeSet(KEY_QUESTION_BANK, items);
+}
+
+export function addQuestion(
+  item: Omit<QuestionItem, "id" | "createdAt" | "updatedAt">,
+): QuestionItem {
+  const list = loadQuestions();
+  const now = Date.now();
+  const newItem: QuestionItem = {
+    ...item,
+    id: `q-${now}-${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: now,
+    updatedAt: now,
+  };
+  list.unshift(newItem);
+  saveQuestions(list);
+  syncQuestionsToServer(); // persist to server
+  return newItem;
+}
+
+export function updateQuestion(
+  id: string,
+  updates: Partial<Omit<QuestionItem, "id" | "createdAt">>,
+): boolean {
+  const list = loadQuestions();
+  const idx = list.findIndex((q) => q.id === id);
+  if (idx < 0) return false;
+  list[idx] = { ...list[idx], ...updates, updatedAt: Date.now() };
+  saveQuestions(list);
+  syncQuestionsToServer(); // persist to server
+  return true;
+}
+
+export function deleteQuestion(id: string): boolean {
+  const list = loadQuestions();
+  const filtered = list.filter((q) => q.id !== id);
+  if (filtered.length === list.length) return false;
+  saveQuestions(filtered);
+  syncQuestionsToServer(); // persist to server
+  return true;
+}
+
+/** 保存（创建或覆盖）一个指定 ID 的题目，用于知识库题目首次编辑保存 */
+export function saveQuestionItem(item: QuestionItem) {
+  const list = loadQuestions();
+  const idx = list.findIndex((q) => q.id === item.id);
+  if (idx >= 0) {
+    list[idx] = { ...item, updatedAt: Date.now() };
+  } else {
+    list.unshift({ ...item });
+  }
+  saveQuestions(list);
+  syncQuestionsToServer(); // persist to server
+}
+
+export function getCategories(): string[] {
+  const qs = loadQuestions();
+  return [...new Set(qs.map((q) => q.category))].sort();
+}
+
+// ---------------- Server sync (question bank) ----------------
+
+const API_DOMAIN_QB = "question-bank";
+
+/** 将当前题库同步到服务端（fire-and-forget，但会检查响应和记录错误） */
+export function syncQuestionsToServer(): void {
+  const questions = loadQuestions();
+  fetch(`/api/data/${API_DOMAIN_QB}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(questions),
+  })
+    .then((res) => {
+      if (!res.ok) {
+        console.error(
+          `[syncQuestions] Server returned ${res.status} ${res.statusText}`,
+        );
+      } else {
+        console.log(
+          `[syncQuestions] Synced ${questions.length} questions to server`,
+        );
+      }
+    })
+    .catch((err) => {
+      console.error("[syncQuestions] Network error syncing to server:", err);
+    });
+}
+
+/** 优先从服务端加载题库，服务端不可用时回退到 localStorage */
+export async function loadQuestionsFromServer(): Promise<void> {
+  try {
+    const res = await fetch(`/api/data/${API_DOMAIN_QB}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json) && json.length > 0) {
+        console.log(
+          `[loadQuestions] Loaded ${json.length} questions from server`,
+        );
+        saveQuestions(json);
+        return;
+      } else {
+        console.log(
+          `[loadQuestions] Server returned empty data, keeping localStorage`,
+          Array.isArray(json) ? "(empty array)" : "(no data)",
+        );
+      }
+    } else {
+      console.error(
+        `[loadQuestions] Server returned ${res.status}`,
+      );
+    }
+  } catch (err) {
+    console.error("[loadQuestions] Network error loading from server:", err);
+  }
+}
+
 // ---------------- Aggregate ----------------
 
 import { ALL_TOPICS } from "@/lib/knowledge";
