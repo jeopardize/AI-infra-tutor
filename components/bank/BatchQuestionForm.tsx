@@ -22,10 +22,11 @@ interface ParsedItem {
 
 interface Props {
   defaultCategory: string;
+  topicId?: string;
   onSaved: () => void;
 }
 
-export function BatchQuestionForm({ defaultCategory, onSaved }: Props) {
+export function BatchQuestionForm({ defaultCategory, topicId, onSaved }: Props) {
   const t = useT();
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<ParsedItem[] | null>(null);
@@ -194,6 +195,7 @@ export function BatchQuestionForm({ defaultCategory, onSaved }: Props) {
       for (const item of parsed) {
         addQuestion({
           category: item.category,
+          topicId: topicId || undefined,
           question: item.question,
           answer: item.answer,
         });

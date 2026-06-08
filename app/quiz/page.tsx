@@ -18,7 +18,11 @@ import {
   loadProgress,
   pushQuizHistory,
   recordQuizResult,
+  loadQuestions,
+  loadQuestionProgress,
+  recordQuestionQuizResult,
   type ProgressMap,
+  type QuestionItem,
 } from "@/lib/storage";
 import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
 import { Loader2, Sparkles, Send, BookOpen, Shuffle, Target } from "lucide-react";
@@ -30,14 +34,19 @@ function QuizInner() {
 
   const [progress, setProgress] = useState<ProgressMap>({});
   const [pickedCp, setPickedCp] = useState<string | null>(initialCp);
+  const [pickedQuestion, setPickedQuestion] = useState<QuestionItem | null>(null);
   const [question, setQuestion] = useState<string>("");
   const [loadingQ, setLoadingQ] = useState(false);
   const [answer, setAnswer] = useState("");
   const [evaluating, setEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState<QuizEvaluation | null>(null);
+  const [bankQuestions, setBankQuestions] = useState<QuestionItem[]>([]);
 
   useEffect(() => {
     setProgress(loadProgress());
+    // Load bank questions with topicId
+    const questions = loadQuestions();
+    setBankQuestions(questions.filter((q) => q.topicId));
   }, []);
 
   useEffect(() => {
@@ -75,6 +84,7 @@ function QuizInner() {
 
   async function generateForCheckpoint(cpId: string) {
     setPickedCp(cpId);
+    setPickedQuestion(null);
     setQuestion("");
     setAnswer("");
     setEvaluation(null);
@@ -98,36 +108,68 @@ function QuizInner() {
     }
   }
 
+  function pickBankQuestion(questionId: string) {
+    const q = bankQuestions.find((item) => item.id === questionId);
+    if (!q) return;
+    setPickedCp(null);
+    setPickedQuestion(q);
+    setQuestion(lang === "en" && q.question.en ? q.question.en : q.question.zh);
+    setAnswer("");
+    setEvaluation(null);
+  }
+
   async function submitAnswer() {
-    if (!pickedCp || !question || !answer.trim() || evaluating) return;
+    if ((!pickedCp && !pickedQuestion) || !question || !answer.trim() || evaluating) return;
     setEvaluating(true);
     setEvaluation(null);
     try {
-      const res = await fetch("/api/quiz/evaluate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          checkpointId: pickedCp,
-          question,
-          answer,
-          language: lang,
-        }),
-      });
-      const data = (await res.json()) as QuizEvaluation;
-      setEvaluation(data);
-      recordQuizResult(pickedCp, data.score);
-      const fresh = loadProgress();
-      setProgress(fresh);
-      const info = getCheckpoint(pickedCp);
-      if (info) {
-        pushQuizHistory({
-          checkpointId: pickedCp,
-          topicId: info.topic.id,
-          question,
-          answer,
-          evaluation: data,
-          at: Date.now(),
+      // For bank questions, use the saved answer as reference
+      if (pickedQuestion) {
+        const res = await fetch("/api/quiz/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            checkpointId: `bank-${pickedQuestion.id}`,
+            question,
+            answer,
+            language: lang,
+            referenceAnswer: lang === "en" && pickedQuestion.answer.en
+              ? pickedQuestion.answer.en
+              : pickedQuestion.answer.zh,
+          }),
         });
+        const data = (await res.json()) as QuizEvaluation;
+        setEvaluation(data);
+        recordQuestionQuizResult(pickedQuestion.id, data.score);
+        const fresh = loadProgress();
+        setProgress(fresh);
+      } else if (pickedCp) {
+        const res = await fetch("/api/quiz/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            checkpointId: pickedCp,
+            question,
+            answer,
+            language: lang,
+          }),
+        });
+        const data = (await res.json()) as QuizEvaluation;
+        setEvaluation(data);
+        recordQuizResult(pickedCp, data.score);
+        const fresh = loadProgress();
+        setProgress(fresh);
+        const info = getCheckpoint(pickedCp);
+        if (info) {
+          pushQuizHistory({
+            checkpointId: pickedCp,
+            topicId: info.topic.id,
+            question,
+            answer,
+            evaluation: data,
+            at: Date.now(),
+          });
+        }
       }
     } catch (e) {
       setEvaluation({

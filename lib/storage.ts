@@ -5,6 +5,7 @@ import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
 import type { Scorecard } from "@/app/api/interview/scorecard/route";
 
 const KEY_PROGRESS = "ai-infra-tutor:progress:v1";
+const KEY_QUESTION_PROGRESS = "ai-infra-tutor:question-progress:v1";
 const KEY_QUIZ_HISTORY = "ai-infra-tutor:quiz-history:v1";
 const KEY_INTERVIEW = "ai-infra-tutor:interviews:v1";
 const KEY_SETTINGS = "ai-infra-tutor:settings:v1";
@@ -99,6 +100,47 @@ export function recordQuizResult(checkpointId: string, score: number) {
   return status;
 }
 
+// ---------------- Question Bank Progress ----------------
+
+export interface QuestionProgress {
+  status: MasteryStatus;
+  lastReviewedAt?: number;
+  attempts: number;
+  lastScore?: number;
+}
+
+export type QuestionProgressMap = Record<string, QuestionProgress>;
+
+export function loadQuestionProgress(): QuestionProgressMap {
+  return safeGet<QuestionProgressMap>(KEY_QUESTION_PROGRESS, {});
+}
+
+export function saveQuestionProgress(progress: QuestionProgressMap) {
+  safeSet(KEY_QUESTION_PROGRESS, progress);
+}
+
+export function getQuestionProgress(questionId: string): QuestionProgress {
+  const p = loadQuestionProgress();
+  return p[questionId] ?? { status: "unknown", attempts: 0 };
+}
+
+export function recordQuestionQuizResult(questionId: string, score: number) {
+  const p = loadQuestionProgress();
+  const cur = p[questionId] ?? { status: "unknown", attempts: 0 };
+  let status: MasteryStatus;
+  if (score >= 85) status = "mastered";
+  else if (score >= 60) status = "learning";
+  else status = "gap";
+  p[questionId] = {
+    status,
+    attempts: cur.attempts + 1,
+    lastScore: score,
+    lastReviewedAt: Date.now(),
+  };
+  saveQuestionProgress(p);
+  return status;
+}
+
 // ---------------- Quiz history ----------------
 
 export function loadQuizHistory(): QuizHistoryItem[] {
@@ -165,6 +207,7 @@ export const KEY_QUESTION_BANK = "ai-infra-tutor:question-bank:v1";
 export interface QuestionItem {
   id: string;
   category: string;
+  topicId?: string; // 关联的 topic ID，可选
   question: { zh: string; en: string };
   answer: { zh: string; en: string };
   createdAt: number;
@@ -306,6 +349,9 @@ export interface TopicStat {
 }
 
 export function computeTopicStats(progress: ProgressMap): TopicStat[] {
+  const questionProgress = loadQuestionProgress();
+  const questions = loadQuestions();
+
   return ALL_TOPICS.map((t) => {
     const stat: TopicStat = {
       topicId: t.id,
@@ -315,10 +361,21 @@ export function computeTopicStats(progress: ProgressMap): TopicStat[] {
       gap: 0,
       unknown: 0,
     };
+
+    // Count checkpoint progress
     for (const cp of t.checkpoints) {
       const s = progress[cp.id]?.status ?? "unknown";
       stat[s]++;
     }
+
+    // Count question bank progress for this topic
+    const topicQuestions = questions.filter((q) => q.topicId === t.id);
+    stat.total += topicQuestions.length;
+    for (const q of topicQuestions) {
+      const s = questionProgress[q.id]?.status ?? "unknown";
+      stat[s]++;
+    }
+
     return stat;
   });
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import type { QuestionItem } from "@/lib/storage";
+import { ALL_TOPICS, CATEGORY_META } from "@/lib/knowledge";
 import { Loader2, Sparkles, X } from "lucide-react";
 
 interface Props {
@@ -18,6 +19,7 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
   const [aZh, setAZh] = useState(item.answer.zh);
   const [aEn, setAEn] = useState(item.answer.en);
   const [category, setCategory] = useState(item.category);
+  const [topicId, setTopicId] = useState(item.topicId || "");
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -59,6 +61,7 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
       saveQuestionItem({
         ...item,
         category,
+        topicId: topicId || undefined,
         question: { zh: qZh, en: qEn },
         answer: { zh: aZh, en: aEn },
       });
@@ -84,12 +87,31 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
           </header>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            <input
-              className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder={t.bank.category}
-            />
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-500">所属主题（Topic）</label>
+              <select
+                className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={topicId}
+                onChange={(e) => setTopicId(e.target.value)}
+              >
+                <option value="">不关联主题（仅用作题库）</option>
+                {ALL_TOPICS.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    [{CATEGORY_META[topic.category].label}] {topic.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-500">{t.bank.category}（标签）</label>
+              <input
+                className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder={t.bank.category}
+              />
+            </div>
 
             <div className="space-y-1">
               <label className="text-xs font-medium text-zinc-500">{t.bank.questionZh}</label>

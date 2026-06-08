@@ -6,6 +6,7 @@ import { Loader2, Sparkles } from "lucide-react";
 
 interface Props {
   category: string;
+  topicId?: string;
   onSaved: () => void;
 }
 
@@ -38,7 +39,7 @@ function Field({
   );
 }
 
-export function SingleQuestionForm({ category, onSaved }: Props) {
+export function SingleQuestionForm({ category, topicId, onSaved }: Props) {
   const t = useT();
   const [qZh, setQZh] = useState("");
   const [qEn, setQEn] = useState("");
@@ -88,6 +89,7 @@ export function SingleQuestionForm({ category, onSaved }: Props) {
       const { addQuestion } = await import("@/lib/storage");
       addQuestion({
         category,
+        topicId: topicId || undefined,
         question: { zh: qZh, en: qEn },
         answer: { zh: aZh, en: aEn },
       });

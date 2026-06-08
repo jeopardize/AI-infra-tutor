@@ -70,6 +70,7 @@ export interface Dict {
   learn: {
     backToDashboard: string;
     checkpointsLabel: (n: number) => string;
+    bankQuestionsLabel: (n: number) => string;
     recommendedResources: string;
     myNotes: string;
     relatedMyNotes: string;
@@ -364,6 +365,7 @@ const zh: Dict = {
   learn: {
     backToDashboard: "返回总览",
     checkpointsLabel: (n) => `CHECKPOINTS（${n}）`,
+    bankQuestionsLabel: (n) => `题库题目（${n}）`,
     recommendedResources: "推荐资源",
     myNotes: "我的笔记",
     relatedMyNotes: "相关的我的笔记",
@@ -661,6 +663,7 @@ const en: Dict = {
   learn: {
     backToDashboard: "Back to Dashboard",
     checkpointsLabel: (n) => `CHECKPOINTS (${n})`,
+    bankQuestionsLabel: (n) => `BANK QUESTIONS (${n})`,
     recommendedResources: "Recommended Resources",
     myNotes: "My Notes",
     relatedMyNotes: "Related Notes",
