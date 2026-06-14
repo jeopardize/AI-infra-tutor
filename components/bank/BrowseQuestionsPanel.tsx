@@ -245,14 +245,14 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
       ) : (
         <div className="space-y-2">
           {filtered.map((q) => (
-            <div key={q.id} className="flex items-start gap-2 min-w-0">
+            <div key={q.id} className="flex items-start gap-2">
               <input
                 type="checkbox"
                 checked={selected.has(q.id)}
                 onChange={() => toggleSelect(q.id)}
                 className="mt-3 ml-1 shrink-0"
               />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1">
                 <QuestionRow item={q} onDelete={handleDelete} onUpdate={handleUpdate} />
               </div>
             </div>

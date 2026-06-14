@@ -379,3 +379,114 @@ export function computeTopicStats(progress: ProgressMap): TopicStat[] {
     return stat;
   });
 }
+
+// ---------------- Custom Topics ----------------
+
+const KEY_CUSTOM_TOPICS = "ai-infra-tutor:custom-topics:v1";
+const KEY_CUSTOM_CHECKPOINTS = "ai-infra-tutor:custom-checkpoints:v1";
+
+export interface CustomTopic {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  createdAt: number;
+}
+
+export interface CustomCheckpoint {
+  id: string;
+  topicId: string;
+  name: string;
+  mustKnow: string;
+  commonMisconceptions: string[];
+  interviewAngles: string[];
+  createdAt: number;
+}
+
+export function loadCustomTopics(): CustomTopic[] {
+  return safeGet<CustomTopic[]>(KEY_CUSTOM_TOPICS, []);
+}
+
+export function saveCustomTopics(items: CustomTopic[]) {
+  safeSet(KEY_CUSTOM_TOPICS, items);
+}
+
+export function loadCustomCheckpoints(): CustomCheckpoint[] {
+  return safeGet<CustomCheckpoint[]>(KEY_CUSTOM_CHECKPOINTS, []);
+}
+
+export function saveCustomCheckpoints(items: CustomCheckpoint[]) {
+  safeSet(KEY_CUSTOM_CHECKPOINTS, items);
+}
+
+export function addCustomTopic(
+  item: Omit<CustomTopic, "id" | "createdAt">,
+): CustomTopic {
+  const list = loadCustomTopics();
+  const now = Date.now();
+  const newItem: CustomTopic = {
+    ...item,
+    id: `ct-${now}-${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: now,
+  };
+  list.unshift(newItem);
+  saveCustomTopics(list);
+  return newItem;
+}
+
+export function deleteCustomTopic(id: string): void {
+  saveCustomTopics(loadCustomTopics().filter((t) => t.id !== id));
+  saveCustomCheckpoints(loadCustomCheckpoints().filter((cp) => cp.topicId !== id));
+}
+
+export function addCustomCheckpoint(
+  item: Omit<CustomCheckpoint, "id" | "createdAt">,
+): CustomCheckpoint {
+  const list = loadCustomCheckpoints();
+  const now = Date.now();
+  const newItem: CustomCheckpoint = {
+    ...item,
+    id: `cc-${now}-${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: now,
+  };
+  list.unshift(newItem);
+  saveCustomCheckpoints(list);
+  return newItem;
+}
+
+export function deleteCustomCheckpoint(id: string): void {
+  saveCustomCheckpoints(loadCustomCheckpoints().filter((cp) => cp.id !== id));
+}
+
+export function computeCustomTopicStats(progress: ProgressMap): TopicStat[] {
+  const questionProgress = loadQuestionProgress();
+  const questions = loadQuestions();
+  const topics = loadCustomTopics();
+  const checkpoints = loadCustomCheckpoints();
+
+  return topics.map((t) => {
+    const topicCheckpoints = checkpoints.filter((cp) => cp.topicId === t.id);
+    const stat: TopicStat = {
+      topicId: t.id,
+      total: topicCheckpoints.length,
+      mastered: 0,
+      learning: 0,
+      gap: 0,
+      unknown: 0,
+    };
+
+    for (const cp of topicCheckpoints) {
+      const s = progress[cp.id]?.status ?? "unknown";
+      stat[s]++;
+    }
+
+    const topicQuestions = questions.filter((q) => q.topicId === t.id);
+    stat.total += topicQuestions.length;
+    for (const q of topicQuestions) {
+      const s = questionProgress[q.id]?.status ?? "unknown";
+      stat[s]++;
+    }
+
+    return stat;
+  });
+}

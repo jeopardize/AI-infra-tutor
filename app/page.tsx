@@ -11,8 +11,11 @@ import {
 import { TopicCard } from "@/components/TopicCard";
 import {
   computeTopicStats,
+  computeCustomTopicStats,
   loadProgress,
+  loadCustomTopics,
   type TopicStat,
+  type CustomTopic,
 } from "@/lib/storage";
 import { useT } from "@/lib/i18n/context";
 import { BookOpen, MessageSquare, Target } from "lucide-react";
@@ -22,13 +25,22 @@ const CATEGORY_ORDER: Category[] = ["training", "inference", "hardware", "system
 export default function HomePage() {
   const t = useT();
   const [stats, setStats] = useState<TopicStat[]>([]);
+  const [customStats, setCustomStats] = useState<TopicStat[]>([]);
+  const [customTopics, setCustomTopics] = useState<CustomTopic[]>([]);
   const [totals, setTotals] = useState({ mastered: 0, gap: 0, total: 0 });
 
   useEffect(() => {
     const progress = loadProgress();
     const s = computeTopicStats(progress);
+    const cs = computeCustomTopicStats(progress);
+    const ct = loadCustomTopics();
+
     setStats(s);
-    const acc = s.reduce(
+    setCustomStats(cs);
+    setCustomTopics(ct);
+
+    const allStats = [...s, ...cs];
+    const acc = allStats.reduce(
       (a, x) => ({
         mastered: a.mastered + x.mastered,
         gap: a.gap + x.gap,
@@ -40,8 +52,11 @@ export default function HomePage() {
   }, []);
 
   const statMap = new Map(stats.map((s) => [s.topicId, s]));
+  const customStatMap = new Map(customStats.map((s) => [s.topicId, s]));
   const overallPct =
     totals.total === 0 ? 0 : Math.round((totals.mastered / totals.total) * 100);
+
+  const totalTopics = ALL_TOPICS.length + customTopics.length;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -49,7 +64,7 @@ export default function HomePage() {
         <h1 className="text-2xl font-bold mb-2">{t.dashboard.welcomeTitle}</h1>
         <p className="text-zinc-500 dark:text-zinc-400">
           {t.dashboard.statsTpl({
-            topics: ALL_TOPICS.length,
+            topics: totalTopics,
             total: totals.total,
             mastered: totals.mastered,
             gap: totals.gap,
@@ -106,6 +121,72 @@ export default function HomePage() {
           </section>
         );
       })}
+
+      {customTopics.length > 0 && (
+        <section className="mb-10">
+          <div className="flex items-baseline gap-2 mb-3">
+            <span className="text-xl">📚</span>
+            <h2 className="text-lg font-semibold">自定义知识库</h2>
+            <span className="text-xs text-zinc-500">你创建的主题</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {customTopics.map((topic) => (
+              <CustomTopicCard key={topic.id} topic={topic} stat={customStatMap.get(topic.id)} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function CustomTopicCard({
+  topic,
+  stat,
+}: {
+  topic: import("@/lib/storage").CustomTopic;
+  stat?: import("@/lib/storage").TopicStat;
+}) {
+  const total = stat?.total ?? 0;
+  const mastered = stat?.mastered ?? 0;
+  const learning = stat?.learning ?? 0;
+  const gap = stat?.gap ?? 0;
+  const pct = total === 0 ? 0 : Math.round((mastered / total) * 100);
+
+  return (
+    <div className="block p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-lg">📚</span>
+        <span className="text-xs text-zinc-500">{topic.category}</span>
+      </div>
+      <div className="font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
+        {topic.title}
+      </div>
+      <div className="text-sm text-zinc-500 dark:text-zinc-400 mb-3 line-clamp-2">
+        {topic.summary}
+      </div>
+      <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <div className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="tabular-nums">{mastered}/{total}</span>
+      </div>
+      {(learning > 0 || gap > 0) && (
+        <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
+          {learning > 0 && (
+            <span>
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1" />
+              学习中 {learning}
+            </span>
+          )}
+          {gap > 0 && (
+            <span>
+              <span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1" />
+              待补强 {gap}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
