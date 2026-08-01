@@ -205,16 +205,7 @@ export function DocDrawer({
 
   return (
     <>
-      <div
-        className="fixed inset-0 bg-black/30 z-40"
-        onClick={() => {
-          if (dirty) {
-            if (!confirm(t.docDrawer.confirmCloseUnsaved)) return;
-          }
-          onClose();
-        }}
-      />
-      <aside className="fixed top-0 right-0 h-full w-full sm:w-[640px] lg:w-[820px] bg-white dark:bg-zinc-950 z-50 shadow-2xl flex flex-col border-l border-zinc-200 dark:border-zinc-800">
+      <aside className="fixed top-0 right-0 h-full w-full sm:w-[560px] lg:w-[680px] bg-white dark:bg-zinc-950 z-50 shadow-2xl flex flex-col border-l border-zinc-200 dark:border-zinc-800">
         <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800">
           <div className="min-w-0 flex-1">
             <div className="text-xs text-zinc-500 truncate">

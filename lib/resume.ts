@@ -32,6 +32,7 @@ export interface ResumeEducation {
   startDate: string;
   endDate: string;
   gpa: string;
+  hidden?: boolean;
 }
 
 export interface ResumeWorkExperience {
@@ -42,15 +43,18 @@ export interface ResumeWorkExperience {
   startDate: string;
   endDate: string;
   description: string;
+  hidden?: boolean;
 }
 
 export interface ResumeProject {
   id: string;
   name: string;
   role: string;
+  link: string;
   startDate: string;
   endDate: string;
   description: string;
+  hidden?: boolean;
 }
 
 export interface ResumeResearch {
@@ -59,12 +63,14 @@ export interface ResumeResearch {
   venue: string;
   date: string;
   description: string;
+  hidden?: boolean;
 }
 
 export interface ResumeHonor {
   id: string;
   name: string;
   date: string;
+  hidden?: boolean;
 }
 
 export interface ResumeSettings {

@@ -87,11 +87,12 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
           </div>
         );
 
-      case "education":
-        return data.education.length > 0 ? (
+      case "education": {
+        const visible = data.education.filter((e) => !e.hidden);
+        return visible.length > 0 ? (
           <div key="education" className="resume-section" style={{ marginBottom: "3mm" }}>
             <SectionTitle text="学历 / Education" />
-            {data.education.map((edu) => (
+            {visible.map((edu) => (
               <div key={edu.id} style={{ marginTop: "1.5mm" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <strong style={{ fontSize: "10.5pt" }}>
@@ -110,12 +111,14 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
             ))}
           </div>
         ) : null;
+      }
 
-      case "workExperience":
-        return data.workExperience.length > 0 ? (
+      case "workExperience": {
+        const visible = data.workExperience.filter((e) => !e.hidden);
+        return visible.length > 0 ? (
           <div key="workExperience" className="resume-section" style={{ marginBottom: "3mm" }}>
             <SectionTitle text="工作经历 / Work Experience" />
-            {data.workExperience.map((exp) => (
+            {visible.map((exp) => (
               <div key={exp.id} style={{ marginTop: "2mm" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <strong style={{ fontSize: "10.5pt" }}>
@@ -137,12 +140,14 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
             ))}
           </div>
         ) : null;
+      }
 
-      case "projectExperience":
-        return data.projectExperience.length > 0 ? (
+      case "projectExperience": {
+        const visible = data.projectExperience.filter((p) => !p.hidden);
+        return visible.length > 0 ? (
           <div key="projectExperience" className="resume-section" style={{ marginBottom: "3mm" }}>
             <SectionTitle text="项目经历 / Projects" />
-            {data.projectExperience.map((proj) => (
+            {visible.map((proj) => (
               <div key={proj.id} style={{ marginTop: "2mm" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <strong style={{ fontSize: "10.5pt" }}>
@@ -157,6 +162,11 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
                     {proj.role}
                   </div>
                 )}
+                {proj.link && (
+                  <div style={{ fontSize: "9pt", color: "#2563eb", marginTop: "0.3mm" }}>
+                    {proj.link}
+                  </div>
+                )}
                 {proj.description && (
                   <RenderDescription text={proj.description} lineSpacing={lineSpacing} />
                 )}
@@ -164,6 +174,7 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
             ))}
           </div>
         ) : null;
+      }
 
       case "skills":
         return data.skills ? (
@@ -173,11 +184,12 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
           </div>
         ) : null;
 
-      case "research":
-        return data.research.length > 0 ? (
+      case "research": {
+        const visible = data.research.filter((r) => !r.hidden);
+        return visible.length > 0 ? (
           <div key="research" className="resume-section" style={{ marginBottom: "3mm" }}>
             <SectionTitle text="科研成果 / Research" />
-            {data.research.map((r) => (
+            {visible.map((r) => (
               <div key={r.id} style={{ marginTop: "1.5mm" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <strong style={{ fontSize: "10.5pt" }}>
@@ -201,12 +213,14 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
             ))}
           </div>
         ) : null;
+      }
 
-      case "honors":
-        return data.honors.length > 0 ? (
+      case "honors": {
+        const visible = data.honors.filter((h) => !h.hidden);
+        return visible.length > 0 ? (
           <div key="honors" className="resume-section" style={{ marginBottom: "3mm" }}>
             <SectionTitle text="获得荣誉 / Honors" />
-            {data.honors.map((h) => (
+            {visible.map((h) => (
               <div key={h.id} style={{ marginTop: "1.5mm", display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontSize: "10pt", color: "#333" }}>
                   {h.name || "荣誉名称"}
@@ -220,6 +234,7 @@ export function ResumePreview({ data, isPrinting, previewRef }: Props) {
             ))}
           </div>
         ) : null;
+      }
 
       case "settings":
         return null; // settings is editor-only, not previewed
@@ -269,15 +284,68 @@ function SectionTitle({ text }: { text: string }) {
   );
 }
 
-/** 将描述文本中的 bullet 行（以 - 或 * 开头）渲染为 <ul><li>，其余行渲染为 <p> */
+/** 解析内联格式：**加粗** 和 *斜体* */
+function parseInline(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining.length > 0) {
+    // Find **bold** first (must check before *italic* to avoid false positives)
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    // Find *italic* — not preceded or followed by another *
+    const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/);
+
+    const boldIdx = boldMatch ? remaining.indexOf(boldMatch[0]) : Infinity;
+    const italicIdx = italicMatch ? remaining.indexOf(italicMatch[0]) : Infinity;
+
+    if (boldIdx === Infinity && italicIdx === Infinity) {
+      nodes.push(remaining);
+      break;
+    }
+
+    if (boldIdx <= italicIdx && boldMatch) {
+      if (boldIdx > 0) nodes.push(remaining.slice(0, boldIdx));
+      nodes.push(<strong key={key++}>{boldMatch[1]}</strong>);
+      remaining = remaining.slice(boldIdx + boldMatch[0].length);
+    } else if (italicMatch) {
+      if (italicIdx > 0) nodes.push(remaining.slice(0, italicIdx));
+      nodes.push(<em key={key++}>{italicMatch[1]}</em>);
+      remaining = remaining.slice(italicIdx + italicMatch[0].length);
+    }
+  }
+
+  return nodes;
+}
+
+/** 将描述文本渲染为带格式的段落和bullet列表
+ * - 以 `- ` 或 `* ` 开头的行 → 主级 bullet
+ * - 以 2+ 空格 + `- ` 开头的行 → 二级 bullet（嵌套缩进）
+ * - 其余行 → 普通段落
+ * - 行内支持 **加粗** 和 *斜体*
+ */
 function RenderDescription({ text, lineSpacing }: { text: string; lineSpacing: number }) {
   const lines = text.split("\n").filter(Boolean);
-  const groups: Array<{ type: "bullet" | "text"; items: string[] }> = [];
-  let current: typeof groups[0] | null = null;
+
+  type LineType = "bullet" | "sub-bullet" | "text";
+  type Group = { type: LineType; items: string[] };
+
+  const groups: Group[] = [];
+  let current: Group | null = null;
 
   for (const line of lines) {
-    const bulletMatch = line.match(/^[-*]\s+(.+)/);
-    if (bulletMatch) {
+    const subBulletMatch = line.match(/^\s{2,}[-*]\s+(.+)/);
+    const bulletMatch = !subBulletMatch && line.match(/^[-*]\s+(.+)/);
+
+    if (subBulletMatch) {
+      if (!current || current.type !== "sub-bullet") {
+        // If there's a current bullet group, we embed sub-bullets in it
+        // by making a new sub-bullet group
+        current = { type: "sub-bullet", items: [] };
+        groups.push(current);
+      }
+      current.items.push(subBulletMatch[1]);
+    } else if (bulletMatch) {
       if (!current || current.type !== "bullet") {
         current = { type: "bullet", items: [] };
         groups.push(current);
@@ -292,26 +360,39 @@ function RenderDescription({ text, lineSpacing }: { text: string; lineSpacing: n
     }
   }
 
+  const itemStyle: React.CSSProperties = {
+    fontSize: "9.5pt",
+    lineHeight: lineSpacing,
+    color: "#333",
+    marginBottom: "0.2mm",
+  };
+
   return (
     <div style={{ marginTop: "0.5mm" }}>
-      {groups.map((g, gi) =>
-        g.type === "bullet" ? (
-          <ul key={gi} style={{ margin: "0.3mm 0", paddingLeft: "4mm", listStyle: "disc" }}>
-            {g.items.map((item, li) => (
-              <li
-                key={li}
-                style={{
-                  fontSize: "9.5pt",
-                  lineHeight: lineSpacing,
-                  color: "#333",
-                  marginBottom: "0.2mm",
-                }}
-              >
-                {item}
-              </li>
-            ))}
-          </ul>
-        ) : (
+      {groups.map((g, gi) => {
+        if (g.type === "bullet") {
+          return (
+            <ul key={gi} style={{ margin: "0.3mm 0", paddingLeft: "4mm", listStyle: "disc" }}>
+              {g.items.map((item, li) => (
+                <li key={li} style={itemStyle}>
+                  {parseInline(item)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        if (g.type === "sub-bullet") {
+          return (
+            <ul key={gi} style={{ margin: "0.2mm 0", paddingLeft: "8mm", listStyle: "circle" }}>
+              {g.items.map((item, li) => (
+                <li key={li} style={{ ...itemStyle, fontSize: "9pt" }}>
+                  {parseInline(item)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return (
           <p
             key={gi}
             style={{
@@ -321,10 +402,10 @@ function RenderDescription({ text, lineSpacing }: { text: string; lineSpacing: n
               color: "#333",
             }}
           >
-            {g.items.join("\n")}
+            {parseInline(g.items.join("\n"))}
           </p>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

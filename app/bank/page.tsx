@@ -15,7 +15,7 @@ function BankInner() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="max-w-6xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-1">{t.bank.title}</h1>
       <p className="text-zinc-500 dark:text-zinc-400 mb-6">{t.bank.subtitle}</p>
 

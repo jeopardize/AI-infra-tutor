@@ -18,7 +18,8 @@ import {
   type CustomTopic,
 } from "@/lib/storage";
 import { useT } from "@/lib/i18n/context";
-import { BookOpen, MessageSquare, Target } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp, Database, MessageSquare, Target } from "lucide-react";
+import { BrowseQuestionsPanel } from "@/components/bank/BrowseQuestionsPanel";
 
 const CATEGORY_ORDER: Category[] = ["training", "inference", "hardware", "system"];
 
@@ -28,6 +29,8 @@ export default function HomePage() {
   const [customStats, setCustomStats] = useState<TopicStat[]>([]);
   const [customTopics, setCustomTopics] = useState<CustomTopic[]>([]);
   const [totals, setTotals] = useState({ mastered: 0, gap: 0, total: 0 });
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankRefreshKey, setBankRefreshKey] = useState(0);
 
   useEffect(() => {
     const progress = loadProgress();
@@ -136,6 +139,29 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      {/* Question bank section */}
+      <section className="mb-10">
+        <button
+          onClick={() => {
+            setBankOpen((v) => !v);
+            if (!bankOpen) setBankRefreshKey((k) => k + 1);
+          }}
+          className="flex items-center gap-2 w-full text-left mb-3 group"
+        >
+          <span className="text-xl"><Database className="w-5 h-5 inline text-blue-600" /></span>
+          <h2 className="text-lg font-semibold group-hover:text-blue-600 transition">题库管理</h2>
+          <span className="text-xs text-zinc-500">浏览和编辑题库题目</span>
+          <span className="ml-auto text-zinc-400">
+            {bankOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </span>
+        </button>
+        {bankOpen && (
+          <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 p-4">
+            <BrowseQuestionsPanel refreshKey={bankRefreshKey} />
+          </div>
+        )}
+      </section>
     </div>
   );
 }

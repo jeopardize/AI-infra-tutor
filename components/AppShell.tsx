@@ -16,10 +16,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { lang, setLang, t } = useLang();
   return (
     <>
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-[#dadce0] dark:border-[#3c4043] bg-white dark:bg-[#292a2d] sticky top-0 z-10 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
           <Link href="/" className="font-semibold tracking-tight">
-            <span className="text-blue-600">AI Infra</span>
+            <span style={{ color: "#1a73e8" }}>AI Infra</span>
             <span className="text-zinc-400 mx-1">·</span>
             <span>{t.nav.brandSub}</span>
           </Link>

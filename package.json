@@ -4,6 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:bg": "pm2 start npm --name \"ai-tutor\" -- run dev && pm2 save",
+    "dev:bg:stop": "pm2 stop ai-tutor",
+    "dev:bg:restart": "pm2 restart ai-tutor",
+    "dev:bg:logs": "pm2 logs ai-tutor --lines 20",
+    "dev:bg:status": "pm2 status ai-tutor",
+    "dev:test": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "postinstall": "node scripts/fix-lightningcss.js"
@@ -24,6 +30,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "lightningcss-darwin-x64": "^1.32.0",
+    "pm2": "^7.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -282,6 +282,7 @@ export interface Dict {
     description: string;
     projectExperience: string;
     projectName: string;
+    projectLink: string;
     addProject: string;
     removeProject: string;
     skills: string;
@@ -568,6 +569,7 @@ const zh: Dict = {
     description: "工作描述",
     projectExperience: "项目经历",
     projectName: "项目名称",
+    projectLink: "项目链接（选填）",
     addProject: "添加项目",
     removeProject: "移除此项目",
     skills: "专业技能",
@@ -875,6 +877,7 @@ const en: Dict = {
     description: "Description",
     projectExperience: "Projects",
     projectName: "Project Name",
+    projectLink: "Project Link (optional)",
     addProject: "Add Project",
     removeProject: "Remove",
     skills: "Skills",

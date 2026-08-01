@@ -173,24 +173,39 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
     saveHiddenKbIds(new Set());
   }
 
-  const kbCount = KB_QUESTIONS.length;
   const hiddenCount = hiddenKbIds.size;
 
   return (
     <div className="space-y-4">
-      {/* Filter bar */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <select
-          className="px-3 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
+      {/* Category tabs */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        <button
+          onClick={() => setFilterCategory("")}
+          className={`shrink-0 px-3 py-1.5 text-xs rounded-full font-medium transition ${
+            filterCategory === ""
+              ? "bg-blue-600 text-white"
+              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          }`}
         >
-          <option value="">{t.bank.allCategories}</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          {t.bank.allCategories}
+        </button>
+        {categories.map((c) => (
+          <button
+            key={c}
+            onClick={() => setFilterCategory(filterCategory === c ? "" : c)}
+            className={`shrink-0 px-3 py-1.5 text-xs rounded-full font-medium transition ${
+              filterCategory === c
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
 
+      {/* Search bar + actions */}
+      <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
           <input
@@ -237,22 +252,24 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
         {selected.size > 0 && ` (${selected.size} 已选)`}
       </div>
 
-      {/* List */}
+      {/* Card grid */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
           {t.bank.noQuestions}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map((q) => (
-            <div key={q.id} className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                checked={selected.has(q.id)}
-                onChange={() => toggleSelect(q.id)}
-                className="mt-3 ml-1 shrink-0"
-              />
-              <div className="flex-1">
+            <div key={q.id} className="relative w-full">
+              <div className="absolute top-2.5 left-2.5 z-10">
+                <input
+                  type="checkbox"
+                  checked={selected.has(q.id)}
+                  onChange={() => toggleSelect(q.id)}
+                  className="cursor-pointer"
+                />
+              </div>
+              <div className="pl-7">
                 <QuestionRow item={q} onDelete={handleDelete} onUpdate={handleUpdate} />
               </div>
             </div>
