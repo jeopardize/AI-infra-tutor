@@ -2,7 +2,7 @@
 
 > A locally-run AI Infrastructure study companion — read curated notes, ask an AI tutor, get auto-generated quizzes, simulate technical interviews, and link everything to your personal markdown notebook.
 
-Built with **Next.js 16 + TypeScript + Tailwind CSS v4 + Claude API**. All data stays on your machine (browser localStorage + your local notes directory); no remote backend is required.
+Built with **Next.js 16 + TypeScript + Tailwind CSS v4 + Claude API**. All data stays on your machine (browser localStorage + local files); no remote backend is required.
 
 > **Note**: The in-app content (knowledge base, AI prompts, UI labels) is in **Chinese**, since the curated knowledge base targets Chinese-speaking AI Infra learners. The codebase, configuration, and this README are in English to make contribution and adaptation easier.
 
@@ -24,7 +24,7 @@ Who it is for:
 | 🎙 Interview | `/interview` | Multi-turn mock interview with the AI, 4-dimension scorecard, history review, analytics, and markdown export |
 | 📚 Library | `/library` | Browse, preview, edit, and create local markdown notes directly from the browser |
 | 🗂 Bank | `/bank` | Bilingual question bank with single/batch entry, AI auto-complete for translations, browse/filter/search, and JSON/Markdown export |
-| 📝 Resume | `/resume` | One-page resume editor with personal info, education, projects, auto-fit to A4 page, and PDF export |
+| 📝 Resume | `/resume` | One-page resume editor: drag-to-reorder sections and entries, rich text formatting (bold / italic / nested bullets), per-entry hide toggle, honor date sorting, auto-fit to A4, and PDF export |
 
 Design highlights:
 
@@ -33,6 +33,7 @@ Design highlights:
 - **Round-trip notes** — editing a note in the browser writes back to the `.md` file; you can also create new files and folders from the UI
 - **Replayable interviews** — every interview session stores the full transcript and scorecard, can be exported to markdown into your notebook, and feeds aggregate analytics (frequency of weak spots, score trend)
 - **Server persistence** — resume and question bank data are automatically saved to `.data/` on the server (via generic `PUT /api/data/[domain]` API) in addition to localStorage, so data survives server restarts
+- **Resume rich text** — description fields support `**bold**` and `*italic*` inline syntax plus nested bullet lists (`  - `), rendered in the live A4 preview and PDF output
 - **Minimal backend** — the only external network calls go to Anthropic's API; all user data persists to local files and browser localStorage
 
 ---
@@ -149,7 +150,7 @@ ai-infra-tutor/
 │   ├── interview/page.tsx             # Mock interview + history + analytics
 │   ├── library/page.tsx               # Notes library browser
 │   ├── bank/page.tsx                  # Question bank manager
-│   ├── resume/page.tsx                # Resume editor
+│   ├── resume/page.tsx                # Resume editor + PDF export
 │   └── api/
 │       ├── chat/route.ts              # Streaming chat (learn + interview)
 │       ├── quiz/generate/route.ts     # AI question generator
@@ -180,10 +181,10 @@ ai-infra-tutor/
 │   │   ├── BrowseQuestionsPanel.tsx   # Browse/filter/export tab
 │   │   ├── QuestionRow.tsx            # Question card with edit/delete
 │   │   ├── EditQuestionDialog.tsx     # Edit question dialog
-│   │   └── exportUtils.ts            # JSON / Markdown export helpers
-│   └── resume/                        # Resume editor components
-│       ├── ResumeEditor.tsx           # Collapsible form sections
-│       └── ResumePreview.tsx          # A4 live preview with print styles
+│   │   └── exportUtils.ts             # JSON / Markdown export helpers
+│   └── resume/
+│       ├── ResumeEditor.tsx           # Form sections with drag-to-reorder, formatting toolbar
+│       └── ResumePreview.tsx          # A4 live preview with print styles + rich text rendering
 ├── lib/
 │   ├── knowledge/                     # Static knowledge tree
 │   │   ├── types.ts                   # Types
@@ -199,14 +200,14 @@ ai-infra-tutor/
 │   │   └── server-storage.ts          # Server-side JSON file persistence
 │   ├── docs/fs.ts                     # Notes FS utilities (path-safe)
 │   ├── interviewExport.ts             # Session → markdown + analytics
-│   ├── resume.ts                      # Resume types + localStorage CRUD
+│   ├── resume.ts                      # Resume types, defaults, localStorage + server CRUD
 │   ├── storage.ts                     # localStorage wrapper + server sync
 │   └── i18n/                          # i18n (Chinese / English)
 │       ├── context.tsx                # React context + provider
 │       └── translations.ts            # All UI strings
 ├── scripts/
 │   └── fix-lightningcss.js            # Cross-arch native binary fix (postinstall)
-├── data/                              # Runtime persistence (gitignored)
+├── .data/                             # Runtime persistence — gitignored, stays local
 │   ├── resume.json
 │   └── question-bank.json
 ├── public/
@@ -324,7 +325,6 @@ The app will resolve and route this through `/api/docs/asset?path=inference/imag
 - [ ] Mobile-friendly layout
 - [ ] Real database option (SQLite / Postgres)
 - [ ] Multi-user / cloud sync
-- [ ] Git-based sync for question bank and resume data
 
 PRs and issues welcome.
 
