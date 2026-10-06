@@ -209,6 +209,8 @@ export interface Dict {
     newDir: string;
     notPreviewable: string;
     clickToOpen: string;
+    refreshShortcutKey: string;
+    refreshShortcutHint: string;
   };
 
   // -------- DocDrawer --------
@@ -517,6 +519,8 @@ const zh: Dict = {
     newDir: "新建子文件夹",
     notPreviewable: "暂不支持预览此类型",
     clickToOpen: "点击查看/编辑",
+    refreshShortcutKey: "Ctrl + R",
+    refreshShortcutHint: "刷新笔记列表（Ctrl/Cmd + R）",
   },
   docDrawer: {
     headerLabel: (dir) => `📚 我的笔记 · ${dir || ""}`,
@@ -839,6 +843,8 @@ const en: Dict = {
     newDir: "New subfolder",
     notPreviewable: "Preview not supported for this file type",
     clickToOpen: "Click to view/edit",
+    refreshShortcutKey: "Ctrl/Cmd + R",
+    refreshShortcutHint: "Refresh notes list (Ctrl/Cmd + R)",
   },
   docDrawer: {
     headerLabel: (dir) => `📚 My Notes · ${dir || ""}`,

@@ -54,6 +54,23 @@ export default function LibraryPage() {
 
   useEffect(load, [load]);
 
+  // 绑定刷新快捷键：Ctrl/Cmd + R
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r") {
+        // 仅在没有输入框聚焦时触发表单外刷新
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+        load();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [load]);
+
   async function createFile(parentPath: string) {
     const name = window.prompt(t.library.newFilePrompt(parentPath));
     if (!name) return;
@@ -107,9 +124,13 @@ export default function LibraryPage() {
         </div>
         <button
           onClick={load}
-          className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+          title={t.library.refreshShortcutHint}
+          className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1.5"
         >
           <RefreshCw className="w-3.5 h-3.5" /> {t.common.refresh}
+          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400 rounded border border-zinc-200 dark:border-zinc-700 ml-0.5">
+            {t.library.refreshShortcutKey}
+          </kbd>
         </button>
       </div>
 
