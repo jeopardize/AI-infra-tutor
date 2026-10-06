@@ -1,15 +1,17 @@
-import { loadJson, saveJson } from "@/lib/data/server-storage";
+import { loadFromGit, saveToGit } from "@/lib/data/repo-storage";
 
 export const runtime = "nodejs";
 
 /**
- * Generic JSON data API.
+ * Generic JSON data API (persisted to git repo + local cache).
  *
- * GET /api/data/resume       -> returns saved JSON
- * PUT /api/data/resume       -> saves request body as JSON
+ * GET /api/data/resume        -> returns saved JSON
+ * PUT /api/data/resume        -> saves request body as JSON
  * GET /api/data/question-bank -> returns saved JSON
  * PUT /api/data/question-bank -> saves request body as JSON
  *
+ * Data is stored in a dedicated git repository (see lib/data/repo-storage.ts)
+ * so it survives server restarts and is easy to migrate between servers.
  * Domain param `[domain]` is sanitized to [a-zA-Z0-9_-] only.
  */
 
@@ -18,7 +20,7 @@ export async function GET(
   { params }: { params: Promise<{ domain: string }> },
 ) {
   const { domain } = await params;
-  const data = await loadJson<unknown>(domain, null);
+  const data = await loadFromGit<unknown>(domain, null);
   return Response.json(data ?? { _empty: true });
 }
 
@@ -34,7 +36,7 @@ export async function PUT(
     return Response.json({ error: "invalid json" }, { status: 400 });
   }
   try {
-    await saveJson(domain, body);
+    await saveToGit(domain, body);
     return Response.json({ ok: true });
   } catch (err) {
     console.error(`[api/data] PUT "${domain}" failed:`, err);

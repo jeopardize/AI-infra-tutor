@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { resolveSafe } from "@/lib/docs/fs";
+import { syncPushNotes } from "@/lib/docs/sync";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,8 @@ export async function POST(req: Request) {
   const title = path.basename(body.path).replace(/\.(md|markdown)$/i, "");
   const initial = body.content ?? `# ${title}\n\n`;
   await fs.writeFile(abs, initial, "utf-8");
+  // 新建笔记后自动 commit + push 到 GitHub
+  await syncPushNotes(`web: create ${body.path}`);
   const stat = await fs.stat(abs);
 
   return Response.json({

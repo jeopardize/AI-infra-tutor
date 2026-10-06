@@ -117,6 +117,24 @@ export function loadQuestionProgress(): QuestionProgressMap {
 
 export function saveQuestionProgress(progress: QuestionProgressMap) {
   safeSet(KEY_QUESTION_PROGRESS, progress);
+  reportProgressToServer(progress);
+}
+
+/** 掌握度上报到服务端（git 持久化），供每日 9 点推送使用 */
+let _progressReportTimer: ReturnType<typeof setTimeout> | null = null;
+function reportProgressToServer(progress: QuestionProgressMap) {
+  if (typeof window === "undefined") return;
+  if (_progressReportTimer) clearTimeout(_progressReportTimer);
+  // debounce 3s，避免连续答题时频繁请求
+  _progressReportTimer = setTimeout(() => {
+    fetch("/api/data/question-progress", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(progress),
+    }).catch((err) =>
+      console.error("[progressReport] failed:", err),
+    );
+  }, 3000);
 }
 
 export function getQuestionProgress(questionId: string): QuestionProgress {

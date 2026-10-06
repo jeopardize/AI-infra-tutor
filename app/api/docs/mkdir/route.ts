@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import { resolveSafe } from "@/lib/docs/fs";
+import { syncPushNotes } from "@/lib/docs/sync";
 
 export const runtime = "nodejs";
 
@@ -41,5 +42,7 @@ export async function POST(req: Request) {
   }
 
   await fs.mkdir(abs, { recursive: true });
+  // 新建目录后自动 commit + push 到 GitHub
+  await syncPushNotes(`web: mkdir ${body.path}`);
   return Response.json({ path: body.path, created: true });
 }
