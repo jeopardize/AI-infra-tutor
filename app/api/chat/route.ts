@@ -25,6 +25,8 @@ interface ChatBody {
   /** learn 模式下当前的 topic / checkpoint */
   topicId?: string;
   checkpointId?: string;
+  /** 额外上下文文本（如当前题目） */
+  context?: string;
   /** interview 模式参数 */
   interview?: { level: string; focus: string[]; durationMin: number };
 }
@@ -60,6 +62,10 @@ export async function POST(req: Request) {
       parts.push(
         `\n---\n${header}\n` + checkpointContextBlock(body.checkpointId, lang),
       );
+    }
+    if (body.context?.trim()) {
+      const header = lang === "en" ? "[Current question]" : "【当前题目】";
+      parts.push(`\n---\n${header}\n${body.context.trim()}`);
     }
     systemText = parts.join("\n");
   }

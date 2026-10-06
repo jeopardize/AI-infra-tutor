@@ -39,6 +39,28 @@ function Field({
   );
 }
 
+export async function postQuestion(item: {
+  category: string;
+  topicId?: string;
+  question: { zh: string; en: string };
+  answer: { zh: string; en: string };
+}): Promise<void> {
+  const res = await fetch("/api/questions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      category: item.category,
+      topicId: item.topicId || undefined,
+      question: item.question,
+      answer: item.answer,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? res.statusText);
+  }
+}
+
 export function SingleQuestionForm({ category, topicId, onSaved }: Props) {
   const t = useT();
   const [qZh, setQZh] = useState("");
@@ -86,18 +108,17 @@ export function SingleQuestionForm({ category, topicId, onSaved }: Props) {
     setSaving(true);
     setMsg(null);
     try {
-      const { addQuestion } = await import("@/lib/storage");
-      addQuestion({
+      await postQuestion({
         category,
-        topicId: topicId || undefined,
+        topicId,
         question: { zh: qZh, en: qEn },
         answer: { zh: aZh, en: aEn },
       });
-      setMsg({ ok: true, text: t.bank.saveSuccess });
+      setMsg({ ok: true, text: `${t.bank.saveSuccess}（已写入 ${category === "其他" ? "data/other_question.md" : `${category}/question.md`}）` });
       setQZh(""); setQEn(""); setAZh(""); setAEn("");
       onSaved();
-    } catch {
-      setMsg({ ok: false, text: t.bank.saveFailed });
+    } catch (e) {
+      setMsg({ ok: false, text: `${t.bank.saveFailed}：${(e as Error).message}` });
     } finally {
       setSaving(false);
     }

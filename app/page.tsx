@@ -1,247 +1,325 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import {
-  ALL_TOPICS,
-  CATEGORY_META,
-  TOPICS_BY_CATEGORY,
-  type Category,
-} from "@/lib/knowledge";
-import { TopicCard } from "@/components/TopicCard";
-import {
-  computeTopicStats,
-  computeCustomTopicStats,
-  loadProgress,
-  loadCustomTopics,
-  type TopicStat,
-  type CustomTopic,
-} from "@/lib/storage";
-import { useT } from "@/lib/i18n/context";
-import { BookOpen, ChevronDown, ChevronUp, Database, MessageSquare, Target } from "lucide-react";
-import { BrowseQuestionsPanel } from "@/components/bank/BrowseQuestionsPanel";
+import { useEffect, useRef, useState } from "react";
+import { Markdown } from "@/components/Markdown";
+import { ChatPanel } from "@/components/ChatPanel";
+import { AnswerResult } from "@/components/quiz/AnswerResult";
+import { loadQuestionProgress, recordQuestionQuizResult } from "@/lib/storage";
+import type { QuestionItem } from "@/lib/storage";
+import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
+import { CalendarDays, ChevronUp, Loader2, ListChecks, Send, Sparkles } from "lucide-react";
 
-const CATEGORY_ORDER: Category[] = ["training", "inference", "hardware", "system"];
+type DailyQuestion = QuestionItem & { file?: string };
+
+interface DailySet {
+  date: string;
+  questions: DailyQuestion[];
+  summary?: string;
+  sentAt?: number;
+  error?: string;
+  emptyReason?: string;
+}
 
 export default function HomePage() {
-  const t = useT();
-  const [stats, setStats] = useState<TopicStat[]>([]);
-  const [customStats, setCustomStats] = useState<TopicStat[]>([]);
-  const [customTopics, setCustomTopics] = useState<CustomTopic[]>([]);
-  const [totals, setTotals] = useState({ mastered: 0, gap: 0, total: 0 });
-  const [bankOpen, setBankOpen] = useState(false);
-  const [bankRefreshKey, setBankRefreshKey] = useState(0);
+  const [daily, setDaily] = useState<DailySet | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const progress = loadProgress();
-    const s = computeTopicStats(progress);
-    const cs = computeCustomTopicStats(progress);
-    const ct = loadCustomTopics();
-
-    setStats(s);
-    setCustomStats(cs);
-    setCustomTopics(ct);
-
-    const allStats = [...s, ...cs];
-    const acc = allStats.reduce(
-      (a, x) => ({
-        mastered: a.mastered + x.mastered,
-        gap: a.gap + x.gap,
-        total: a.total + x.total,
-      }),
-      { mastered: 0, gap: 0, total: 0 },
-    );
-    setTotals(acc);
+    (async () => {
+      try {
+        const res = await fetch("/api/daily");
+        const data = (await res.json()) as DailySet;
+        setDaily(data);
+        if (data.error) setLoadError(data.error);
+      } catch (e) {
+        setLoadError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const statMap = new Map(stats.map((s) => [s.topicId, s]));
-  const customStatMap = new Map(customStats.map((s) => [s.topicId, s]));
-  const overallPct =
-    totals.total === 0 ? 0 : Math.round((totals.mastered / totals.total) * 100);
+  const activeQuestion = daily?.questions.find((q) => q.id === activeId) ?? null;
 
-  const totalTopics = ALL_TOPICS.length + customTopics.length;
+  function pickForAnswer(q: QuestionItem) {
+    setActiveId(q.id);
+    setTimeout(() => workspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <section className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">{t.dashboard.welcomeTitle}</h1>
-        <p className="text-zinc-500 dark:text-zinc-400">
-          {t.dashboard.statsTpl({
-            topics: totalTopics,
-            total: totals.total,
-            mastered: totals.mastered,
-            gap: totals.gap,
-          })}
-        </p>
-        <div className="mt-3 h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden max-w-md">
-          <div
-            className="h-full bg-emerald-500 transition-all"
-            style={{ width: `${overallPct}%` }}
-          />
+        <div className="flex items-center gap-2 mb-1">
+          <h1 className="text-2xl font-bold">每日企业微信题目</h1>
+          {daily?.date && (
+            <span className="flex items-center gap-1 text-xs text-zinc-500">
+              <CalendarDays className="w-3.5 h-3.5" />
+              {daily.date}
+            </span>
+          )}
         </div>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          与每天 9 点企业微信推送的题目同步。点击题目作答，提交后自动对比标准答案并获得 AI 解析。
+        </p>
       </section>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-10">
-        <ActionCard
-          href="/quiz"
-          icon={<Target className="w-5 h-5" />}
-          title={t.dashboard.actionQuizTitle}
-          desc={t.dashboard.actionQuizDesc}
-          color="bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
-        />
-        <ActionCard
-          href={`/learn/${ALL_TOPICS[0].id}`}
-          icon={<BookOpen className="w-5 h-5" />}
-          title={t.dashboard.actionLearnTitle}
-          desc={t.dashboard.actionLearnDesc}
-          color="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300"
-        />
-        <ActionCard
-          href="/interview"
-          icon={<MessageSquare className="w-5 h-5" />}
-          title={t.dashboard.actionInterviewTitle}
-          desc={t.dashboard.actionInterviewDesc}
-          color="bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
-        />
-      </section>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
+        <div className="min-w-0 space-y-5">
+          {loading ? (
+            <div className="p-10 text-center text-zinc-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> 正在加载今日题目…
+            </div>
+          ) : loadError ? (
+            <div className="p-8 rounded-xl border border-rose-200 dark:border-rose-900 text-rose-600 text-sm">
+              加载失败：{loadError}
+            </div>
+          ) : !daily || daily.questions.length === 0 ? (
+            <div className="p-10 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-center text-zinc-400">
+              <ListChecks className="w-8 h-8 mx-auto mb-2" />
+              <p>今日暂无题目</p>
+              <p className="text-xs mt-1">{daily?.emptyReason ?? "先去题库页面添加题目吧"}</p>
+            </div>
+          ) : (
+            <DailyQuestionCards
+              questions={daily.questions}
+              activeId={activeId}
+              onPick={pickForAnswer}
+            />
+          )}
 
-      {CATEGORY_ORDER.map((cat) => {
-        const topics = TOPICS_BY_CATEGORY[cat];
-        const meta = CATEGORY_META[cat];
-        const catText = t.categories[cat];
+          {/* 答题工作区 */}
+          <div ref={workspaceRef} className="scroll-mt-20">
+            {activeQuestion && (
+              <AnswerWorkspace
+                key={activeQuestion.id}
+                question={activeQuestion}
+                onStandardUpdated={(zh) => {
+                  setDaily((d) =>
+                    d
+                      ? {
+                          ...d,
+                          questions: d.questions.map((q) =>
+                            q.id === activeQuestion.id ? { ...q, answer: { ...q.answer, zh } } : q,
+                          ),
+                        }
+                      : d,
+                  );
+                }}
+              />
+            )}
+          </div>
+
+          {daily?.summary ? (
+            <section className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 p-5">
+              <h2 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-blue-600" /> 笔记缺失点总结
+              </h2>
+              <Markdown>{daily.summary}</Markdown>
+            </section>
+          ) : null}
+        </div>
+
+        {/* AI 问答 */}
+        <aside className="h-[560px] lg:sticky lg:top-20">
+          <ChatPanel
+            hint="AI 问答：可结合当前题目提问，例如“这题考察什么？”、“给我一个答题思路”"
+            placeholder="问任何 AI Infra 相关的问题…"
+            context={activeQuestion ? `当前正在作答的题目：${activeQuestion.question.zh || activeQuestion.question.en}` : undefined}
+          />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function DailyQuestionCards({
+  questions,
+  activeId,
+  onPick,
+}: {
+  questions: DailyQuestion[];
+  activeId: string | null;
+  onPick: (q: DailyQuestion) => void;
+}) {
+  const progress = loadQuestionProgress();
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {questions.map((q, i) => {
+        const p = progress[q.id];
+        const isOther = q.category === "其他";
         return (
-          <section key={cat} className="mb-10">
-            <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-xl">{meta.emoji}</span>
-              <h2 className="text-lg font-semibold">{catText.label}</h2>
-              <span className="text-xs text-zinc-500">{catText.description}</span>
+          <button
+            key={q.id}
+            onClick={() => onPick(q)}
+            className={`text-left border rounded-xl p-4 transition bg-white dark:bg-zinc-900 hover:border-blue-400 dark:hover:border-blue-600 focus:outline-none ${
+              activeId === q.id ? "border-blue-500 ring-2 ring-blue-500/30" : "border-zinc-200 dark:border-zinc-800"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                isOther
+                  ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                  : "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300"
+              }`}>
+                {q.category}
+              </span>
+              {p?.status === "mastered" && "✅"}
+              {p?.status === "learning" && "🟡"}
+              {p?.status === "gap" && "🔴"}
+              {i === 0 && <span className="text-[10px] text-zinc-400">#1</span>}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {topics.map((t) => (
-                <TopicCard key={t.id} topic={t} stat={statMap.get(t.id)} />
-              ))}
+            <div className="text-sm font-medium text-zinc-800 dark:text-zinc-100 line-clamp-3">
+              {q.question.zh || q.question.en}
             </div>
-          </section>
+            <div className="mt-2 text-xs text-zinc-400 flex items-center">
+              {q.answer.zh ? "有标准答案" : "暂无标准答案"}
+            </div>
+          </button>
         );
       })}
+    </div>
+  );
+}
 
-      {customTopics.length > 0 && (
-        <section className="mb-10">
-          <div className="flex items-baseline gap-2 mb-3">
-            <span className="text-xl">📚</span>
-            <h2 className="text-lg font-semibold">自定义知识库</h2>
-            <span className="text-xs text-zinc-500">你创建的主题</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {customTopics.map((topic) => (
-              <CustomTopicCard key={topic.id} topic={topic} stat={customStatMap.get(topic.id)} />
-            ))}
-          </div>
-        </section>
-      )}
+function AnswerWorkspace({
+  question,
+  onStandardUpdated,
+}: {
+  question: DailyQuestion;
+  onStandardUpdated: (zh: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [attempts, setAttempts] = useState<string[]>([]);
+  const [grading, setGrading] = useState(false);
+  const [evaluation, setEvaluation] = useState<QuizEvaluation | null>(null);
+  const [savedStandard, setSavedStandard] = useState(false);
+  const [savingStandard, setSavingStandard] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
 
-      {/* Question bank section */}
-      <section className="mb-10">
-        <button
-          onClick={() => {
-            setBankOpen((v) => !v);
-            if (!bankOpen) setBankRefreshKey((k) => k + 1);
-          }}
-          className="flex items-center gap-2 w-full text-left mb-3 group"
-        >
-          <span className="text-xl"><Database className="w-5 h-5 inline text-blue-600" /></span>
-          <h2 className="text-lg font-semibold group-hover:text-blue-600 transition">题库管理</h2>
-          <span className="text-xs text-zinc-500">浏览和编辑题库题目</span>
-          <span className="ml-auto text-zinc-400">
-            {bankOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+  async function handleSubmit() {
+    const a = draft.trim();
+    if (!a || grading) return;
+    setGrading(true);
+    setSubmitError("");
+    try {
+      const standard = question.answer.zh || "";
+      const res = await fetch("/api/quiz/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          checkpointId: `bank-${question.id}`,
+          question: question.question.zh || question.question.en,
+          answer: a,
+          referenceAnswer: standard,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+      const ev = (await res.json()) as QuizEvaluation;
+      setEvaluation(ev);
+      setAttempts((prev) => [...prev, a]);
+      setDraft("");
+      recordQuestionQuizResult(question.id, ev.score);
+    } catch (e) {
+      setSubmitError((e as Error).message);
+    } finally {
+      setGrading(false);
+    }
+  }
+
+  async function handleSaveStandard(text: string): Promise<boolean> {
+    setSavingStandard(true);
+    try {
+      const res = await fetch("/api/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: question.id,
+          topicId: question.topicId,
+          category: question.category,
+          question: question.question,
+          answer: { zh: text, en: question.answer.en },
+          createdAt: question.createdAt,
+          prevFile: question.file,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+      setSavedStandard(true);
+      onStandardUpdated(text);
+      return true;
+    } catch (e) {
+      alert(`保存失败：${(e as Error).message}`);
+      return false;
+    } finally {
+      setSavingStandard(false);
+    }
+  }
+
+  return (
+    <section className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 overflow-hidden">
+      {/* 题面头 */}
+      <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/40">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-medium">
+            {question.category}
           </span>
-        </button>
-        {bankOpen && (
-          <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 p-4">
-            <BrowseQuestionsPanel refreshKey={bankRefreshKey} />
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function CustomTopicCard({
-  topic,
-  stat,
-}: {
-  topic: import("@/lib/storage").CustomTopic;
-  stat?: import("@/lib/storage").TopicStat;
-}) {
-  const total = stat?.total ?? 0;
-  const mastered = stat?.mastered ?? 0;
-  const learning = stat?.learning ?? 0;
-  const gap = stat?.gap ?? 0;
-  const pct = total === 0 ? 0 : Math.round((mastered / total) * 100);
-
-  return (
-    <div className="block p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">📚</span>
-        <span className="text-xs text-zinc-500">{topic.category}</span>
-      </div>
-      <div className="font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
-        {topic.title}
-      </div>
-      <div className="text-sm text-zinc-500 dark:text-zinc-400 mb-3 line-clamp-2">
-        {topic.summary}
-      </div>
-      <div className="flex items-center gap-2 text-xs text-zinc-500">
-        <div className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-          <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="ml-auto text-xs text-zinc-400 hover:text-zinc-600 flex items-center gap-0.5"
+          >
+            <ChevronUp className={`w-3.5 h-3.5 transition ${collapsed ? "rotate-90" : ""}`} />
+            {collapsed ? "展开" : "收起"}
+          </button>
         </div>
-        <span className="tabular-nums">{mastered}/{total}</span>
+        {collapsed ? (
+          <div className="text-sm text-zinc-500 line-clamp-1">
+            {question.question.zh || question.question.en}
+          </div>
+        ) : (
+          <Markdown>{question.question.zh || question.question.en}</Markdown>
+        )}
       </div>
-      {(learning > 0 || gap > 0) && (
-        <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
-          {learning > 0 && (
-            <span>
-              <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1" />
-              学习中 {learning}
-            </span>
+
+      {!collapsed && (
+        <div className="p-5 space-y-4">
+          {/* 答题输入 */}
+          {!evaluation && (
+            <div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="写下你的答案…（可以多次作答，每次提交都会与标准答案对比）"
+                className="w-full min-h-[140px] p-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm outline-none focus:border-blue-500"
+              />
+              {submitError && <div className="text-xs text-rose-600 mt-1">{submitError}</div>}
+              <div className="mt-2 flex justify-end">
+                <button
+                  onClick={handleSubmit}
+                  disabled={grading || !draft.trim()}
+                  className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"
+                >
+                  <Send className="w-4 h-4" />
+                  提交
+                </button>
+              </div>
+            </div>
           )}
-          {gap > 0 && (
-            <span>
-              <span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1" />
-              待补强 {gap}
-            </span>
-          )}
+
+          <AnswerResult
+            attempts={attempts}
+            standardAnswer={question.answer.zh}
+            grading={grading}
+            evaluation={evaluation}
+            savingStandard={savingStandard}
+            savedStandard={savedStandard}
+            onSaveStandard={handleSaveStandard}
+            onRetry={() => setEvaluation(null)}
+          />
         </div>
       )}
-    </div>
-  );
-}
-
-function ActionCard({
-  href,
-  icon,
-  title,
-  desc,
-  color,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-  color: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="block p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900 transition"
-    >
-      <div
-        className={`inline-flex items-center justify-center w-9 h-9 rounded-md mb-2 ${color}`}
-      >
-        {icon}
-      </div>
-      <div className="font-semibold mb-1">{title}</div>
-      <div className="text-sm text-zinc-500 dark:text-zinc-400">{desc}</div>
-    </Link>
+    </section>
   );
 }

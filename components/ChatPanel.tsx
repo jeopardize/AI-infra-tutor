@@ -17,6 +17,8 @@ export interface ChatPanelProps {
   hint?: string;
   /** 初始 placeholder */
   placeholder?: string;
+  /** 额外上下文文本（如当前题目），会附加到 system prompt */
+  context?: string;
 }
 
 export function ChatPanel(props: ChatPanelProps) {
@@ -50,6 +52,7 @@ export function ChatPanel(props: ChatPanelProps) {
           messages: next,
           topicId: props.topicId,
           checkpointId: props.checkpointId,
+          context: props.context,
           language: lang,
         }),
       });

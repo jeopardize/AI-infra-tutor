@@ -25,7 +25,6 @@ import { useLang } from "@/lib/i18n/context";
 import {
   loadProgress,
   setCheckpointStatus,
-  loadQuestions,
   loadQuestionProgress,
   type ProgressMap,
   type QuestionItem,
@@ -50,8 +49,15 @@ export default function LearnTopicPage({
 
   useEffect(() => {
     setProgress(loadProgress());
-    const questions = loadQuestions();
-    setBankQuestions(questions.filter((q) => q.topicId === topicId));
+    // 题库统一从服务端（笔记库 question.md）加载
+    fetch("/api/questions")
+      .then((r) => r.json())
+      .then((d: { questions: QuestionItem[] }) => {
+        if (Array.isArray(d.questions)) {
+          setBankQuestions(d.questions.filter((q) => q.topicId === topicId));
+        }
+      })
+      .catch(() => {});
   }, [topicId]);
 
   function markStatus(status: MasteryStatus) {

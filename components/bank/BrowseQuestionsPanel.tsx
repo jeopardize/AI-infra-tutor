@@ -3,111 +3,136 @@
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import type { QuestionItem } from "@/lib/storage";
-import { QuestionRow } from "./QuestionRow";
+import { EditQuestionDialog, type BankCategoryOption } from "./EditQuestionDialog";
 import { exportAsJson, exportAsMarkdown } from "./exportUtils";
-import { Download, EyeOff, Search } from "lucide-react";
-import { CATEGORY_META, ALL_TOPICS } from "@/lib/knowledge";
+import { Download, Search } from "lucide-react";
 
-const KEY_HIDDEN_KB = "ai-infra-tutor:hidden-kb-checkpoints:v1";
+export type BankQuestion = QuestionItem & { file?: string };
 
-/** 从知识库中获取预设分类列表 */
-const PRESET_CATEGORIES: string[] = (() => {
-  const cats = Object.values(CATEGORY_META).map((m) => m.label);
-  const topics = ALL_TOPICS.map((t) => t.title);
-  return [...cats, ...topics];
-})();
-
-/** 将知识库 checkpoint 生成为 QuestionItem 列表 */
-function generateKbQuestions(): QuestionItem[] {
-  const items: QuestionItem[] = [];
-  for (const topic of ALL_TOPICS) {
-    for (const cp of topic.checkpoints) {
-      items.push({
-        id: `kb-${cp.id}`,
-        category: topic.title,
-        question: {
-          zh: cp.interviewAngles[0] || cp.name,
-          en: cp.interviewAnglesEn?.[0] || cp.nameEn || "",
-        },
-        answer: { zh: cp.mustKnow, en: cp.mustKnowEn || "" },
-        createdAt: 0,
-        updatedAt: 0,
-      });
-    }
-  }
-  return items;
-}
-
-const KB_QUESTIONS = generateKbQuestions();
-
-function loadHiddenKbIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = window.localStorage.getItem(KEY_HIDDEN_KB);
-    if (!raw) return new Set();
-    return new Set(JSON.parse(raw) as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveHiddenKbIds(ids: Set<string>) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY_HIDDEN_KB, JSON.stringify([...ids]));
-  } catch {
-    /* quota exceeded */
-  }
-}
+const OTHER_CATEGORY = "其他";
 
 interface Props {
   refreshKey: number;
+  categories: BankCategoryOption[];
+  items: BankQuestion[];
+  onChange: () => void;
 }
 
-export function BrowseQuestionsPanel({ refreshKey }: Props) {
+interface EditableRowProps {
+  item: BankQuestion;
+  categories: BankCategoryOption[];
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function QuestionCard({ item, categories, onEdit, onDelete }: EditableRowProps) {
   const t = useT();
-  const [questions, setQuestions] = useState<QuestionItem[]>([]);
-  const [hiddenKbIds, setHiddenKbIds] = useState<Set<string>>(loadHiddenKbIds);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function copyText(text: string) {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 max-w-full overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition rounded-lg min-w-0"
+      >
+        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 font-medium ${
+          item.category === OTHER_CATEGORY
+            ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+            : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+        }`}>
+          {item.category}
+        </span>
+        <span className="text-sm text-zinc-800 dark:text-zinc-200 truncate flex-1 min-w-0">
+          {item.question.zh || item.question.en}
+        </span>
+        {item.answer.zh ? (
+          <span className="text-[10px] text-emerald-600 shrink-0">有答案</span>
+        ) : (
+          <span className="text-[10px] text-zinc-400 shrink-0">无答案</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 space-y-3 border-t border-zinc-200 dark:border-zinc-800 pt-3 mt-0 overflow-hidden">
+          <div className="text-[10px] text-zinc-400">
+            存放：{item.category === OTHER_CATEGORY ? "data/other_question.md" : `${item.category}/question.md`}
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-zinc-500 mb-1 flex items-center gap-2">
+              <span>{t.bank.questionZh}</span>
+              <button onClick={() => copyText(item.question.zh)} className="text-zinc-400 hover:text-zinc-600">
+                {copied ? "✓" : "⧉"}
+              </button>
+            </div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden">{item.question.zh || "—"}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.questionEn}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words overflow-hidden">{item.question.en || "—"}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.answerZh}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words overflow-hidden">{item.answer.zh || "（暂无，可在答题页提交后点“设为标准答案”生成）"}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.answerEn}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words overflow-hidden">{item.answer.en || "—"}</div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              ✏️ {t.bank.edit}
+            </button>
+            <button
+              onClick={onDelete}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30"
+            >
+              🗑 {t.bank.delete}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {open && categories.length === 0 && (
+        <div className="text-xs text-zinc-400 px-3 pb-2">分类列表为空</div>
+      )}
+    </div>
+  );
+}
+
+export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }: Props) {
+  const t = useT();
   const [filterCategory, setFilterCategory] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<BankQuestion | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const { loadQuestions, loadQuestionsFromServer } = require("@/lib/storage");
-    // Try server first, then localStorage
-    loadQuestionsFromServer().then(() => {
-      setQuestions(loadQuestions());
+  const categoryOptions: BankCategoryOption[] = useMemo(() => {
+    const merged = [
+      ...categories,
+      { path: "data", label: OTHER_CATEGORY, file: "data/other_question.md" },
+    ];
+    const seen = new Set<string>();
+    return merged.filter((c) => {
+      const k = c.label;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
     });
-    setHiddenKbIds(loadHiddenKbIds());
-  }, [refreshKey]);
-
-  /** 合并知识库预置题目与用户自定义题目，用户编辑过的版本优先 */
-  const mergedQuestions = useMemo(() => {
-    const userMap = new Map(questions.map((q) => [q.id, q]));
-    const result: QuestionItem[] = [];
-
-    for (const kb of KB_QUESTIONS) {
-      if (hiddenKbIds.has(kb.id)) continue;
-      result.push(userMap.get(kb.id) || kb);
-    }
-
-    // 纯用户自定义题目（非 kb- 前缀）
-    for (const q of questions) {
-      if (!q.id.startsWith("kb-")) {
-        result.push(q);
-      }
-    }
-
-    return result;
-  }, [questions, hiddenKbIds]);
-
-  const categories = useMemo(() => {
-    const cats = [...new Set(mergedQuestions.map((q) => q.category))];
-    return [...new Set([...PRESET_CATEGORIES, ...cats])].sort();
-  }, [mergedQuestions]);
+  }, [categories]);
 
   const filtered = useMemo(() => {
-    return mergedQuestions.filter((q) => {
+    return items.filter((q) => {
       const matchCategory = !filterCategory || q.category === filterCategory;
       const matchSearch =
         !searchText ||
@@ -117,66 +142,42 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
         q.answer.en.toLowerCase().includes(searchText.toLowerCase());
       return matchCategory && matchSearch;
     });
-  }, [mergedQuestions, filterCategory, searchText]);
+  }, [items, filterCategory, searchText]);
 
-  function handleDelete(id: string) {
-    if (id.startsWith("kb-")) {
-      const next = new Set(hiddenKbIds);
-      next.add(id);
-      setHiddenKbIds(next);
-      saveHiddenKbIds(next);
-    } else {
-      const { deleteQuestion } = require("@/lib/storage");
-      deleteQuestion(id);
-      setQuestions((prev) => prev.filter((q) => q.id !== id));
+  async function handleDelete(item: BankQuestion) {
+    if (!confirm(t.bank.deleteConfirm)) return;
+    setDeletingId(item.id);
+    try {
+      const params = new URLSearchParams({ id: item.id });
+      if (item.file) params.set("file", item.file);
+      const res = await fetch(`/api/questions?${params}`, { method: "DELETE" });
+      if (res.ok) onChange();
+      else alert("删除失败");
+    } finally {
+      setDeletingId(null);
     }
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }
-
-  function handleUpdate() {
-    const { loadQuestions } = require("@/lib/storage");
-    setQuestions(loadQuestions());
-    setHiddenKbIds(loadHiddenKbIds());
-  }
-
-  function toggleSelect(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   function handleExportJson() {
-    const items =
-      selected.size > 0
-        ? mergedQuestions.filter((q) => selected.has(q.id))
-        : filtered;
-    exportAsJson(items);
+    exportAsJson(filtered);
   }
 
   function handleExportMarkdown() {
-    const items =
-      selected.size > 0
-        ? mergedQuestions.filter((q) => selected.has(q.id))
-        : filtered;
-    exportAsMarkdown(items);
+    exportAsMarkdown(filtered);
   }
 
-  function handleShowHidden() {
-    setHiddenKbIds(new Set());
-    saveHiddenKbIds(new Set());
-  }
-
-  const hiddenCount = hiddenKbIds.size;
+  const otherCount = items.filter((q) => q.category === OTHER_CATEGORY).length;
 
   return (
     <div className="space-y-4">
+      {/* 提示语：题库逻辑 */}
+      <div className="text-xs text-zinc-500 bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2">
+        分类严格对应笔记库文件夹：每类题目存放在对应文件夹的 <code className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded">question.md</code> 里；
+        无法确认分类的题目放在 <code className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded">data/other_question.md</code>
+        （显示为「其他」{otherCount > 0 ? `，当前 ${otherCount} 题` : ""}）。
+        在网页中编辑题目并修改分类时，会自动把它移动到所属文件夹的 question.md 下。
+      </div>
+
       {/* Category tabs */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
         <button
@@ -189,22 +190,27 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
         >
           {t.bank.allCategories}
         </button>
-        {categories.map((c) => (
-          <button
-            key={c}
-            onClick={() => setFilterCategory(filterCategory === c ? "" : c)}
-            className={`shrink-0 px-3 py-1.5 text-xs rounded-full font-medium transition ${
-              filterCategory === c
-                ? "bg-blue-600 text-white"
-                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
+        {categoryOptions.map((c) => {
+          const count = items.filter((q) => q.category === c.label).length;
+          return (
+            <button
+              key={c.path}
+              onClick={() => setFilterCategory(filterCategory === c.label ? "" : c.label)}
+              className={`shrink-0 px-3 py-1.5 text-xs rounded-full font-medium transition ${
+                filterCategory === c.label
+                  ? "bg-blue-600 text-white"
+                  : c.label === OTHER_CATEGORY && otherCount > 0
+                    ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+            >
+              {c.label === OTHER_CATEGORY ? "其他" : c.label} {count > 0 ? `(${count})` : ""}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Search bar + actions */}
+      {/* Search + export */}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
@@ -215,17 +221,6 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
             onChange={(e) => setSearchText(e.target.value)}
           />
         </div>
-
-        {hiddenCount > 0 && (
-          <button
-            onClick={handleShowHidden}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            <EyeOff className="w-3 h-3" />
-            显示已隐藏 ({hiddenCount})
-          </button>
-        )}
-
         <div className="flex gap-1">
           <button
             onClick={handleExportJson}
@@ -248,11 +243,10 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
 
       {/* Stats */}
       <div className="text-xs text-zinc-500">
-        {filtered.length} / {mergedQuestions.length}
-        {selected.size > 0 && ` (${selected.size} 已选)`}
+        {filtered.length} / {items.length}
       </div>
 
-      {/* Card grid */}
+      {/* Cards */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
           {t.bank.noQuestions}
@@ -260,20 +254,32 @@ export function BrowseQuestionsPanel({ refreshKey }: Props) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map((q) => (
-            <div key={q.id} className="relative w-full">
-              <div className="absolute top-2.5 left-2.5 z-10">
-                <input
-                  type="checkbox"
-                  checked={selected.has(q.id)}
-                  onChange={() => toggleSelect(q.id)}
-                  className="cursor-pointer"
-                />
-              </div>
-              <div className="pl-7">
-                <QuestionRow item={q} onDelete={handleDelete} onUpdate={handleUpdate} />
-              </div>
-            </div>
+            <QuestionCard
+              key={q.id}
+              item={q}
+              categories={categoryOptions}
+              onEdit={() => setEditing(q)}
+              onDelete={() => handleDelete(q)}
+            />
           ))}
+        </div>
+      )}
+
+      {editing && (
+        <EditQuestionDialog
+          item={editing}
+          categories={categoryOptions}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            onChange();
+          }}
+        />
+      )}
+
+      {deletingId && (
+        <div className="fixed bottom-4 right-4 text-xs text-zinc-500 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 shadow">
+          删除中… {deletingId}
         </div>
       )}
     </div>

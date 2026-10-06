@@ -1,90 +1,17 @@
 import { getClient, pickModel } from "@/lib/claude/client";
 import {
   interviewScorecardSystem,
-  systemWithCache,
   type PromptLang,
 } from "@/lib/claude/prompts";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 interface ScorecardBody {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   config: { level: string; focus: string[]; durationMin: number };
   language?: PromptLang;
 }
-
-const scorecardTool = {
-  name: "submit_scorecard",
-  description: "提交面试评分报告",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      overall: { type: "number", description: "总评 0-100" },
-      summary: {
-        type: "string",
-        description: "一句话总评（中文，200 字以内）",
-      },
-      dimensions: {
-        type: "object",
-        properties: {
-          concept_clarity: { type: "number" },
-          system_design: { type: "number" },
-          practical_experience: { type: "number" },
-          communication: { type: "number" },
-        },
-        required: [
-          "concept_clarity",
-          "system_design",
-          "practical_experience",
-          "communication",
-        ],
-      },
-      strengths: {
-        type: "array",
-        items: { type: "string" },
-        description: "亮点",
-      },
-      weaknesses: {
-        type: "array",
-        items: { type: "string" },
-        description: "明显短板",
-      },
-      knowledge_gaps: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            checkpoint_id: {
-              type: "string",
-              description:
-                "对应的 checkpoint id，如果不能精确对应就用接近的或空字符串",
-            },
-            description: {
-              type: "string",
-              description: "盲点说明，便于学习者理解差距在哪",
-            },
-          },
-          required: ["checkpoint_id", "description"],
-        },
-      },
-      next_steps: {
-        type: "array",
-        items: { type: "string" },
-        description: "下一步学习建议",
-      },
-    },
-    required: [
-      "overall",
-      "summary",
-      "dimensions",
-      "strengths",
-      "weaknesses",
-      "knowledge_gaps",
-      "next_steps",
-    ],
-  },
-};
 
 export interface Scorecard {
   overall: number;
@@ -99,6 +26,38 @@ export interface Scorecard {
   weaknesses: string[];
   knowledge_gaps: Array<{ checkpoint_id: string; description: string }>;
   next_steps: string[];
+}
+
+/** 从模型文本输出中解析出 JSON 对象 */
+function extractJson(text: string): Scorecard | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const s = fenced ? fenced[1] : text;
+  const m = s.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[0]) as Scorecard;
+  } catch {
+    return null;
+  }
+}
+
+const SCHEMA_INSTRUCTION =
+  lang_neutral_schema();
+
+function lang_neutral_schema() {
+  return `JSON 字段定义（必须全部包含）：
+{
+  "overall": number 0-100,
+  "summary": string 一句话总评,
+  "dimensions": {
+    "concept_clarity": number, "system_design": number,
+    "practical_experience": number, "communication": number
+  },
+  "strengths": string[] 亮点,
+  "weaknesses": string[] 明显短板,
+  "knowledge_gaps": [{"checkpoint_id": string, "description": string}],
+  "next_steps": string[] 下一步学习建议
+}`;
 }
 
 export async function POST(req: Request) {
@@ -133,10 +92,8 @@ ${transcript}
 
 ---
 
-Based on the above, call submit_scorecard. All string fields must be in English.`
-      : `以下是刚结束的模拟面试完整对话。配置：${JSON.stringify(
-          body.config,
-        )}
+Based on the above, output the scorecard as JSON text (no tool calling). All string fields must be in English.`
+      : `以下是刚结束的模拟面试完整对话。配置：${JSON.stringify(body.config)}
 
 ---
 
@@ -144,27 +101,40 @@ ${transcript}
 
 ---
 
-请基于上面对话，调用 submit_scorecard 工具生成评分报告。`;
+请基于上面对话，直接输出评分报告 JSON 文本（不要调用工具、不要输出其他内容）。所有字段用中文。`;
 
-  const resp = await client.messages.create({
-    model: pickModel("quality"),
-    max_tokens: 2048,
-    system: systemWithCache(interviewScorecardSystem(lang)),
-    tools: [scorecardTool],
-    tool_choice: { type: "tool", name: "submit_scorecard" },
-    messages: [{ role: "user", content: userPrompt }],
-  });
+  // 注意：当前代理（ark）调用 tools 时会偶发空 tool_use（{"raw_arguments": ""}），
+  // 改为纯文本 JSON 输出更稳定。
+  const JSON_SYSTEM_SUFFIX =
+    lang === "en"
+      ? `\n\n---\n\n[FORMAT] Output ONLY one JSON object (no tool calls, no prose). Schema:\n${SCHEMA_INSTRUCTION}`
+      : `\n\n---\n\n【输出格式】只输出一个 JSON 对象（不要调用工具、不要输出任何其他文字）。Schema：\n${SCHEMA_INSTRUCTION}`;
+  const system = interviewScorecardSystem(lang) + JSON_SYSTEM_SUFFIX;
 
-  const toolUse = resp.content.find((b) => b.type === "tool_use") as
-    | { type: "tool_use"; input: Scorecard }
-    | undefined;
+  const MAX_TRIES = 2;
+  let scorecard: Scorecard | null = null;
+  for (let i = 0; i < MAX_TRIES; i++) {
+    const resp = await client.messages.create({
+      model: pickModel("quality"),
+      max_tokens: 2048,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    const text = resp.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { type: "text"; text: string }).text)
+      .join("");
+    scorecard = extractJson(text);
+    console.log(`[scorecard] try ${i + 1}: parsed=${!!scorecard} textLen=${text.length}`);
+    if (scorecard) break;
+  }
 
-  if (!toolUse) {
+  if (!scorecard) {
     return Response.json(
-      { error: "model did not return a tool call" },
+      { error: "failed to parse scorecard from model output" },
       { status: 502 },
     );
   }
 
-  return Response.json(toolUse.input);
+  return Response.json(scorecard);
 }

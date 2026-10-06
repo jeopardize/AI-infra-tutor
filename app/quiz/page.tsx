@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,19 +13,20 @@ import {
 } from "@/lib/knowledge";
 import { KnowledgeMap } from "@/components/KnowledgeMap";
 import { Markdown } from "@/components/Markdown";
+import { AnswerResult } from "@/components/quiz/AnswerResult";
 import { useLang } from "@/lib/i18n/context";
 import {
   loadProgress,
   pushQuizHistory,
   recordQuizResult,
-  loadQuestions,
-  loadQuestionProgress,
   recordQuestionQuizResult,
   type ProgressMap,
-  type QuestionItem,
 } from "@/lib/storage";
+import type { QuestionItem } from "@/lib/storage";
 import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
 import { Loader2, Sparkles, Send, BookOpen, Shuffle, Target } from "lucide-react";
+
+type BankQuestion = QuestionItem & { file?: string };
 
 function QuizInner() {
   const { lang, t } = useLang();
@@ -34,19 +35,29 @@ function QuizInner() {
 
   const [progress, setProgress] = useState<ProgressMap>({});
   const [pickedCp, setPickedCp] = useState<string | null>(initialCp);
-  const [pickedQuestion, setPickedQuestion] = useState<QuestionItem | null>(null);
+  const [pickedQuestion, setPickedQuestion] = useState<BankQuestion | null>(null);
   const [question, setQuestion] = useState<string>("");
   const [loadingQ, setLoadingQ] = useState(false);
   const [answer, setAnswer] = useState("");
+  const [attempts, setAttempts] = useState<string[]>([]);
   const [evaluating, setEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState<QuizEvaluation | null>(null);
-  const [bankQuestions, setBankQuestions] = useState<QuestionItem[]>([]);
+  const [savedStandard, setSavedStandard] = useState(false);
+  const [savingStandard, setSavingStandard] = useState(false);
+  const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
+  const submitRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setProgress(loadProgress());
-    // Load bank questions with topicId
-    const questions = loadQuestions();
-    setBankQuestions(questions.filter((q) => q.topicId));
+    // 题库统一从服务端（笔记库 question.md）加载
+    fetch("/api/questions")
+      .then((r) => r.json())
+      .then((d: { questions: BankQuestion[] }) => {
+        if (Array.isArray(d.questions) && d.questions.length > 0) {
+          setBankQuestions(d.questions);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -87,7 +98,9 @@ function QuizInner() {
     setPickedQuestion(null);
     setQuestion("");
     setAnswer("");
+    setAttempts([]);
     setEvaluation(null);
+    setSavedStandard(false);
     setLoadingQ(true);
     try {
       const res = await fetch("/api/quiz/generate", {
@@ -115,7 +128,9 @@ function QuizInner() {
     setPickedQuestion(q);
     setQuestion(lang === "en" && q.question.en ? q.question.en : q.question.zh);
     setAnswer("");
+    setAttempts([]);
     setEvaluation(null);
+    setSavedStandard(false);
   }
 
   async function submitAnswer() {
@@ -140,9 +155,10 @@ function QuizInner() {
         });
         const data = (await res.json()) as QuizEvaluation;
         setEvaluation(data);
+        setAttempts((prev) => [...prev, answer]);
+        setAnswer("");
         recordQuestionQuizResult(pickedQuestion.id, data.score);
-        const fresh = loadProgress();
-        setProgress(fresh);
+        setProgress(loadProgress());
       } else if (pickedCp) {
         const res = await fetch("/api/quiz/evaluate", {
           method: "POST",
@@ -156,9 +172,10 @@ function QuizInner() {
         });
         const data = (await res.json()) as QuizEvaluation;
         setEvaluation(data);
+        setAttempts((prev) => [...prev, answer]);
+        setAnswer("");
         recordQuizResult(pickedCp, data.score);
-        const fresh = loadProgress();
-        setProgress(fresh);
+        setProgress(loadProgress());
         const info = getCheckpoint(pickedCp);
         if (info) {
           pushQuizHistory({
@@ -171,6 +188,7 @@ function QuizInner() {
           });
         }
       }
+      setTimeout(() => submitRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (e) {
       setEvaluation({
         score: 0,
@@ -182,6 +200,39 @@ function QuizInner() {
       });
     } finally {
       setEvaluating(false);
+    }
+  }
+
+  /** 把当前我的答案保存为该题的标准答案（写回题库 question.md，含分类文件移动） */
+  async function saveMyAnswerAsStandard(text: string): Promise<boolean> {
+    if (!pickedQuestion) return false;
+    setSavingStandard(true);
+    try {
+      const res = await fetch("/api/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pickedQuestion.id,
+          topicId: pickedQuestion.topicId,
+          category: pickedQuestion.category,
+          question: pickedQuestion.question,
+          answer: { zh: text, en: pickedQuestion.answer.en },
+          createdAt: pickedQuestion.createdAt,
+          prevFile: pickedQuestion.file,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`保存失败：${err.error ?? res.statusText}`);
+        return false;
+      }
+      setSavedStandard(true);
+      return true;
+    } catch (e) {
+      alert(`保存失败：${(e as Error).message}`);
+      return false;
+    } finally {
+      setSavingStandard(false);
     }
   }
 
@@ -212,7 +263,7 @@ function QuizInner() {
               {ALL_TOPICS.map((topic) => (
                 <optgroup
                   key={topic.id}
-                  label={`[${t.categories[topic.category].label}] ${localizedTopicTitle(topic, lang)}`}
+                  label={`[${CATEGORY_META[topic.category].label}] ${localizedTopicTitle(topic, lang)}`}
                 >
                   {topic.checkpoints.map((cp) => (
                     <option key={cp.id} value={cp.id}>
@@ -222,6 +273,26 @@ function QuizInner() {
                 </optgroup>
               ))}
             </select>
+            {bankQuestions.length > 0 && (
+              <select
+                onChange={(e) => e.target.value && pickBankQuestion(e.target.value)}
+                value=""
+                className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+              >
+                <option value="">从题库选题…</option>
+                {[...new Set(bankQuestions.map((q) => q.category))].sort().map((cat) => (
+                  <optgroup key={cat} label={cat}>
+                    {bankQuestions
+                      .filter((q) => q.category === cat)
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {(q.question.zh || q.question.en).slice(0, 50)}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+            )}
             {pickedCp && (
               <button
                 onClick={() => generateForCheckpoint(pickedCp)}
@@ -246,36 +317,46 @@ function QuizInner() {
               · <strong>{localizedCheckpointName(pickedInfo.checkpoint, lang)}</strong>
             </div>
           )}
+          {pickedQuestion && (
+            <div className="text-xs text-zinc-500">
+              题库题目 · 分类：<strong>{pickedQuestion.category}</strong>
+            </div>
+          )}
 
-          {/* 题面 */}
-          <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-5 min-h-[140px]">
-            {loadingQ ? (
-              <div className="flex items-center gap-2 text-zinc-500">
-                <Loader2 className="w-4 h-4 animate-spin" /> {t.quiz.generating}
-              </div>
-            ) : question ? (
-              <Markdown>{question}</Markdown>
-            ) : (
-              <div className="text-zinc-400 text-sm flex items-center gap-2">
-                <Target className="w-4 h-4" /> {t.quiz.pickToStart}
-              </div>
-            )}
-          </div>
+          {/* 题面卡片 */}
+          {question && (
+            <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 p-5 min-h-[100px]">
+              {loadingQ ? (
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <Loader2 className="w-4 h-4 animate-spin" /> {t.quiz.generating}
+                </div>
+              ) : (
+                <Markdown>{question}</Markdown>
+              )}
+            </div>
+          )}
+
+          {!question && !loadingQ && (
+            <div className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl p-10 text-sm text-zinc-400 flex flex-col items-center gap-2">
+              <Target className="w-6 h-6" />
+              {t.quiz.pickToStart}
+            </div>
+          )}
 
           {/* 答题区 */}
-          {question && !evaluation && (
-            <div>
+          {question && !loadingQ && (
+            <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 p-4">
               <textarea
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
                 placeholder={t.quiz.answerPlaceholder}
-                className="w-full min-h-[160px] p-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm outline-none focus:border-blue-500"
+                className="w-full min-h-[140px] p-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm outline-none focus:border-blue-500"
               />
               <div className="mt-2 flex justify-end">
                 <button
                   onClick={submitAnswer}
                   disabled={evaluating || !answer.trim()}
-                  className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm disabled:opacity-40 flex items-center gap-1"
+                  className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"
                 >
                   {evaluating ? (
                     <>
@@ -293,17 +374,46 @@ function QuizInner() {
             </div>
           )}
 
-          {/* 评估结果 */}
-          {evaluation && (
-            <EvaluationView
-              evaluation={evaluation}
-              checkpointId={pickedCp!}
-              onRetry={() => {
-                setEvaluation(null);
-                setAnswer("");
-              }}
-              onNext={() => generateForCheckpoint(pickRandomWeak())}
-            />
+          {/* 提交结果：对比卡片 + AI 解析 */}
+          <div ref={submitRef} className="scroll-mt-20">
+            {!evaluating && (
+              <AnswerResult
+                attempts={attempts}
+                standardAnswer={
+                  pickedQuestion
+                    ? lang === "en" && pickedQuestion.answer.en
+                      ? pickedQuestion.answer.en
+                      : pickedQuestion.answer.zh
+                    : ""
+                }
+                grading={evaluating}
+                evaluation={evaluation}
+                savingStandard={savingStandard}
+                savedStandard={savedStandard}
+                onSaveStandard={pickedQuestion ? saveMyAnswerAsStandard : undefined}
+                onRetry={() => setEvaluation(null)}
+              />
+            )}
+          </div>
+
+          {evaluation && !evaluating && (
+            <div className="flex items-center gap-2">
+              {pickedInfo && (
+                <Link
+                  href={`/learn/${pickedInfo.topic.id}`}
+                  className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  {t.quiz.reviewTopic}
+                </Link>
+              )}
+              <button
+                onClick={() => generateForCheckpoint(pickRandomWeak())}
+                className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {t.quiz.nextOne}
+              </button>
+            </div>
           )}
         </div>
 
@@ -317,119 +427,6 @@ function QuizInner() {
           />
         </aside>
       </div>
-    </div>
-  );
-}
-
-function EvaluationView({
-  evaluation,
-  checkpointId,
-  onRetry,
-  onNext,
-}: {
-  evaluation: QuizEvaluation;
-  checkpointId: string;
-  onRetry: () => void;
-  onNext: () => void;
-}) {
-  const t = useLang().t;
-  const info = getCheckpoint(checkpointId);
-  const scoreColor =
-    evaluation.score >= 85
-      ? "text-emerald-600"
-      : evaluation.score >= 60
-        ? "text-amber-600"
-        : "text-rose-600";
-
-  return (
-    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs text-zinc-500">{t.quiz.score}</div>
-          <div className={`text-3xl font-bold ${scoreColor}`}>
-            {evaluation.score}
-            <span className="text-base text-zinc-400">/100</span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onRetry}
-            className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            {t.quiz.retryThis}
-          </button>
-          {info && (
-            <Link
-              href={`/learn/${info.topic.id}`}
-              className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
-            >
-              <BookOpen className="w-4 h-4" />
-              {t.quiz.reviewTopic}
-            </Link>
-          )}
-          <button
-            onClick={onNext}
-            className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
-          >
-            {t.quiz.nextOne}
-          </button>
-        </div>
-      </div>
-
-      {evaluation.correct_points.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 mb-1">
-            {t.quiz.correctPoints}
-          </h3>
-          <ul className="list-disc pl-5 text-sm space-y-1">
-            {evaluation.correct_points.map((p, i) => (
-              <li key={i}>{p}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {evaluation.gaps.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-400 mb-1">
-            {t.quiz.gaps}
-          </h3>
-          <ul className="list-disc pl-5 text-sm space-y-1">
-            {evaluation.gaps.map((p, i) => (
-              <li key={i}>{p}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {evaluation.misconceptions.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
-            {t.quiz.misconceptions}
-          </h3>
-          <ul className="list-disc pl-5 text-sm space-y-1">
-            {evaluation.misconceptions.map((p, i) => (
-              <li key={i}>{p}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {evaluation.reference_answer && (
-        <div>
-          <h3 className="text-sm font-semibold mb-1">{t.quiz.referenceAnswer}</h3>
-          <Markdown>{evaluation.reference_answer}</Markdown>
-        </div>
-      )}
-
-      {evaluation.follow_up && (
-        <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900">
-          <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-1">
-            {t.quiz.followUp}
-          </h3>
-          <div className="text-sm">{evaluation.follow_up}</div>
-        </div>
-      )}
     </div>
   );
 }

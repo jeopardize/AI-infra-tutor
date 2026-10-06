@@ -5,6 +5,7 @@ import { useT } from "@/lib/i18n/context";
 import { Loader2, Sparkles } from "lucide-react";
 import { CATEGORY_META } from "@/lib/knowledge";
 import { ALL_TOPICS } from "@/lib/knowledge";
+import { postQuestion } from "./SingleQuestionForm";
 
 /** 知识库预设分类列表 */
 const PRESET_CATEGORIES: string[] = (() => {
@@ -191,11 +192,10 @@ export function BatchQuestionForm({ defaultCategory, topicId, onSaved }: Props) 
     setSaving(true);
     setMsg(null);
     try {
-      const { addQuestion } = await import("@/lib/storage");
       for (const item of parsed) {
-        addQuestion({
+        await postQuestion({
           category: item.category,
-          topicId: topicId || undefined,
+          topicId,
           question: item.question,
           answer: item.answer,
         });

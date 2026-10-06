@@ -6,13 +6,20 @@ import type { QuestionItem } from "@/lib/storage";
 import { ALL_TOPICS, CATEGORY_META } from "@/lib/knowledge";
 import { Loader2, Sparkles, X } from "lucide-react";
 
+export interface BankCategoryOption {
+  path: string;
+  label: string;
+  file: string;
+}
+
 interface Props {
-  item: QuestionItem;
+  item: QuestionItem & { file?: string };
+  categories: BankCategoryOption[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
+export function EditQuestionDialog({ item, categories, onClose, onSaved }: Props) {
   const t = useT();
   const [qZh, setQZh] = useState(item.question.zh);
   const [qEn, setQEn] = useState(item.question.en);
@@ -23,6 +30,8 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const wasOther = item.category === "其他";
 
   async function doAutoComplete(
     sourceText: string,
@@ -57,18 +66,27 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
     setSaving(true);
     setMsg(null);
     try {
-      const { saveQuestionItem } = await import("@/lib/storage");
-      saveQuestionItem({
-        ...item,
-        category,
-        topicId: topicId || undefined,
-        question: { zh: qZh, en: qEn },
-        answer: { zh: aZh, en: aEn },
+      const res = await fetch("/api/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          topicId: topicId || undefined,
+          category,
+          question: { zh: qZh, en: qEn },
+          answer: { zh: aZh, en: aEn },
+          createdAt: item.createdAt,
+          prevFile: "file" in item ? item.file : undefined,
+        }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? res.statusText);
+      }
       setMsg({ ok: true, text: t.bank.saveSuccess });
       setTimeout(onSaved, 500);
-    } catch {
-      setMsg({ ok: false, text: t.bank.saveFailed });
+    } catch (e) {
+      setMsg({ ok: false, text: `${t.bank.saveFailed}：${(e as Error).message}` });
     } finally {
       setSaving(false);
     }
@@ -87,6 +105,29 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
           </header>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {wasOther && category !== "其他" && (
+              <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                该题当前在 data/other_question.md（其他）。修改分类保存后，将自动移动到该分类笔记文件夹
+                <code className="mx-1 px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded">question.md</code> 下。
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-500">分类（笔记库文件夹）</label>
+              <select
+                className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c.path} value={c.label}>
+                    {c.path === "data" ? "其他（data/other_question.md）" : `${c.path}/question.md`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-zinc-400">题目严格存放在该文件夹的 question.md 中</p>
+            </div>
+
             <div className="space-y-1">
               <label className="text-xs font-medium text-zinc-500">所属主题（Topic）</label>
               <select
@@ -101,16 +142,6 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-500">{t.bank.category}（标签）</label>
-              <input
-                className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder={t.bank.category}
-              />
             </div>
 
             <div className="space-y-1">
@@ -174,7 +205,7 @@ export function EditQuestionDialog({ item, onClose, onSaved }: Props) {
             <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">
               {t.common.cancel}
             </button>
-            <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-700">
+            <button onClick={handleSave} disabled={saving || !category} className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-700">
               {saving ? t.common.loading : t.common.save}
             </button>
           </footer>
