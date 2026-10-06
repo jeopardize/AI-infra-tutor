@@ -20,8 +20,12 @@ export interface CheckpointProgress {
 export type ProgressMap = Record<string, CheckpointProgress>;
 
 export interface QuizHistoryItem {
-  checkpointId: string;
-  topicId: string;
+  checkpointId?: string;
+  topicId?: string;
+  /** 题库题目 id（bank 来源时必填） */
+  questionId?: string;
+  category?: string;
+  source?: "checkpoint" | "bank";
   question: string;
   answer: string;
   evaluation: QuizEvaluation;
@@ -165,10 +169,39 @@ export function loadQuizHistory(): QuizHistoryItem[] {
   return safeGet<QuizHistoryItem[]>(KEY_QUIZ_HISTORY, []);
 }
 
+/**
+ * 记录一条答题历史：
+ * - localStorage 保留最近 200 条（离线可查）
+ * - 同时上报服务端（git 持久化，服务端只保留半年）
+ */
 export function pushQuizHistory(item: QuizHistoryItem) {
   const list = loadQuizHistory();
   list.unshift(item);
-  safeSet(KEY_QUIZ_HISTORY, list.slice(0, 50));
+  safeSet(KEY_QUIZ_HISTORY, list.slice(0, 200));
+  fetch("/api/quiz-history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  }).catch((err) =>
+    console.error("[quizHistoryReport] failed:", err),
+  );
+}
+
+/** 从服务端拉取半年内的答题历史（服务端为完整数据源） */
+export async function loadQuizHistoryFromServer(): Promise<QuizHistoryItem[]> {
+  try {
+    const res = await fetch("/api/quiz-history");
+    if (res.ok) {
+      const list = (await res.json()) as QuizHistoryItem[];
+      if (Array.isArray(list)) {
+        safeSet(KEY_QUIZ_HISTORY, list.slice(0, 200));
+        return list;
+      }
+    }
+  } catch (err) {
+    console.error("[loadQuizHistoryFromServer] failed:", err);
+  }
+  return loadQuizHistory();
 }
 
 // ---------------- Interview sessions ----------------

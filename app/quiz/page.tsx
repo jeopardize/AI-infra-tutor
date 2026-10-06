@@ -159,6 +159,15 @@ function QuizInner() {
         setAnswer("");
         recordQuestionQuizResult(pickedQuestion.id, data.score);
         setProgress(loadProgress());
+        pushQuizHistory({
+          questionId: pickedQuestion.id,
+          category: pickedQuestion.category,
+          source: "bank",
+          question,
+          answer,
+          evaluation: data,
+          at: Date.now(),
+        });
       } else if (pickedCp) {
         const res = await fetch("/api/quiz/evaluate", {
           method: "POST",
@@ -177,16 +186,15 @@ function QuizInner() {
         recordQuizResult(pickedCp, data.score);
         setProgress(loadProgress());
         const info = getCheckpoint(pickedCp);
-        if (info) {
-          pushQuizHistory({
-            checkpointId: pickedCp,
-            topicId: info.topic.id,
-            question,
-            answer,
-            evaluation: data,
-            at: Date.now(),
-          });
-        }
+        pushQuizHistory({
+          checkpointId: pickedCp,
+          topicId: info?.topic.id,
+          source: "checkpoint",
+          question,
+          answer,
+          evaluation: data,
+          at: Date.now(),
+        });
       }
       setTimeout(() => submitRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (e) {

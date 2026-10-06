@@ -22,6 +22,13 @@ const DEFAULT_REMOTE = "https://github.com/jeopardize/ai_infra_knowlege.git";
 
 export const QB_GIT_DIR = "question-bank";
 
+/** 含个人隐私、不推送到 git 仓库的 key：只存本地数据目录 */
+const LOCAL_ONLY_KEYS = new Set(["resume"]);
+
+function isLocalOnly(key: string): boolean {
+  return LOCAL_ONLY_KEYS.has(key);
+}
+
 function dataRepoPath(): string {
   const envPath = process.env.DATA_REPO_PATH;
   if (envPath) {
@@ -83,8 +90,17 @@ async function ensureRepo(): Promise<string> {
 /**
  * 从 git 仓库加载题库 JSON。
  * 顺序：git 仓库 → 本地缓存文件 → fallback
+ * local-only 的 key（如 resume）只读本地缓存。
  */
 export async function loadFromGit<T>(key: string, fallback: T): Promise<T> {
+  if (isLocalOnly(key)) {
+    try {
+      const raw = await fs.readFile(localCachePath(key), "utf-8");
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
+  }
   const fp = gitFilePath(key);
   try {
     await ensureRepo();
@@ -107,8 +123,20 @@ export async function loadFromGit<T>(key: string, fallback: T): Promise<T> {
   }
 }
 
-/** 把题库 JSON 写入 git 仓库并 commit + push（尽力而为，失败时留本地缓存） */
+/** 把题库 JSON 写入 git 仓库并 commit + push（尽力而为，失败时留本地缓存）；
+ *  local-only 的 key（如 resume）只写本地数据目录，绝不进 git。 */
 export async function saveToGit<T>(key: string, data: T): Promise<void> {
+  // 无论 git 是否成功，都先写本地缓存（保证数据不丢）
+  try {
+    await fs.mkdir(path.dirname(localCachePath(key)), { recursive: true });
+    await fs.writeFile(localCachePath(key), JSON.stringify(data, null, 2), "utf-8");
+  } catch {}
+
+  if (isLocalOnly(key)) {
+    console.log(`[data-repo] saved "${key}" to local data dir only (git skipped)`);
+    return;
+  }
+
   const fp = gitFilePath(key);
   try {
     await ensureRepo();
@@ -127,11 +155,5 @@ export async function saveToGit<T>(key: string, data: T): Promise<void> {
     console.log(`[data-repo] saved "${key}" to git repo`);
   } catch (err) {
     console.warn(`[data-repo] saveToGit("${key}") failed, keeping local cache:`, (err as Error).message);
-  } finally {
-    // 无论 git 是否成功，都写一份本地缓存（保证数据不丢）
-    try {
-      await fs.mkdir(path.dirname(localCachePath(key)), { recursive: true });
-      await fs.writeFile(localCachePath(key), JSON.stringify(data, null, 2), "utf-8");
-    } catch {}
   }
 }

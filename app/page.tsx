@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/Markdown";
 import { ChatPanel } from "@/components/ChatPanel";
 import { AnswerResult } from "@/components/quiz/AnswerResult";
-import { loadQuestionProgress, recordQuestionQuizResult } from "@/lib/storage";
+import { loadQuestionProgress, pushQuizHistory, recordQuestionQuizResult } from "@/lib/storage";
 import type { QuestionItem } from "@/lib/storage";
 import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
 import { CalendarDays, ChevronUp, Loader2, ListChecks, Send, Sparkles } from "lucide-react";
@@ -223,6 +223,16 @@ function AnswerWorkspace({
       setAttempts((prev) => [...prev, a]);
       setDraft("");
       recordQuestionQuizResult(question.id, ev.score);
+      pushQuizHistory({
+        questionId: question.id,
+        topicId: question.topicId,
+        category: question.category,
+        source: "bank",
+        question: question.question.zh || question.question.en,
+        answer: a,
+        evaluation: ev,
+        at: Date.now(),
+      });
     } catch (e) {
       setSubmitError((e as Error).message);
     } finally {
