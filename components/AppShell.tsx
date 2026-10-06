@@ -54,6 +54,12 @@ function Shell({ children }: { children: React.ReactNode }) {
             >
               {t.nav.resume}
             </Link>
+            <Link
+              href="/feedback"
+              className="hover:text-zinc-900 dark:hover:text-white"
+            >
+              {t.nav.feedback}
+            </Link>
           </nav>
           <button
             onClick={() => setLang(lang === "zh" ? "en" : "zh")}
