@@ -348,7 +348,7 @@ const zh: Dict = {
   },
   nav: {
     brandSub: "Tutor",
-    dashboard: "总览",
+    dashboard: "每日题目",
     quiz: "查漏补缺",
     interview: "模拟面试",
     library: "笔记库",
@@ -397,7 +397,7 @@ const zh: Dict = {
     gapCount: (n) => `盲点 ${n}`,
   },
   learn: {
-    backToDashboard: "返回总览",
+    backToDashboard: "返回每日题目",
     checkpointsLabel: (n) => `CHECKPOINTS（${n}）`,
     bankQuestionsLabel: (n) => `题库题目（${n}）`,
     recommendedResources: "推荐资源",
@@ -652,7 +652,7 @@ const en: Dict = {
   },
   nav: {
     brandSub: "Tutor",
-    dashboard: "Dashboard",
+    dashboard: "Daily Questions",
     quiz: "Quiz",
     interview: "Interview",
     library: "Library",
@@ -713,7 +713,7 @@ const en: Dict = {
     gapCount: (n) => `Gap ${n}`,
   },
   learn: {
-    backToDashboard: "Back to Dashboard",
+    backToDashboard: "Back to Daily Questions",
     checkpointsLabel: (n) => `CHECKPOINTS (${n})`,
     bankQuestionsLabel: (n) => `BANK QUESTIONS (${n})`,
     recommendedResources: "Recommended Resources",

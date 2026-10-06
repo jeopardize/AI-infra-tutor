@@ -425,13 +425,12 @@ function QuizInner() {
           )}
         </div>
 
-        {/* 侧栏：知识图谱 */}
+        {/* 侧栏：知识地图（按笔记库分类） */}
         <aside className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-4 h-fit lg:sticky lg:top-20">
           <div className="text-sm font-semibold mb-3">{t.quiz.knowledgeMap}</div>
           <KnowledgeMap
-            progress={progress}
-            onPick={generateForCheckpoint}
-            highlightId={pickedCp ?? undefined}
+            onPick={pickBankQuestion}
+            highlightId={pickedQuestion?.id}
           />
         </aside>
       </div>
