@@ -8,6 +8,12 @@ LOG="${FRIDAY_LOG:-$HOME/logs/friday-improve.log}"
 mkdir -p "$(dirname "$LOG")"
 echo "[$(date '+%F %T')] friday-improve start" >> "$LOG"
 
+# 自包含：加载项目环境变量（Anthropic key 等）到子进程环境
+set -a
+# shellcheck disable=SC1091
+[ -f "$REPO/.env" ] && . "$REPO/.env"
+set +a
+
 run() { echo "[$(date '+%F %T')] $1" >> "$LOG"; "$@" >> "$LOG" 2>&1; }
 
 cd "$REPO" || exit 1
