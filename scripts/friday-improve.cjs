@@ -89,35 +89,71 @@ async function llmPolish(feedback) {
   const model = process.env.PROJECT_ANTHROPIC_MODEL || "claude-sonnet-4-6";
   const system = [
     "你是「AI Infra Tutor」（Next.js 16 + TypeScript + Tailwind CSS v4）应用的代码润色工程师，按照用户反馈做小步、聚焦的改进。",
+    "",
+    "工作方式：为避免凭空猜测现有代码，你先「读文件」再「改代码」。用严格 JSON 回复，(protocol 如下)",
+    '  第一步回读: {"kind":"read","paths":["components/AppShell.tsx","app/library/page.tsx",...]}  # 最多 10 个路径，读好后进入第二步',
+    '  第二步改码: {"kind":"edit","summary":"中文一句话总结","edits":[{"path":"相对路径","content":"文件完整新内容","action":"write|delete"}],"skipped":[{"content":"反馈原文","reason":"原因"}]}',
+    "",
     "硬性规则：",
-    "1. 只允许修改或新建 app/**、components/**、lib/**、public/** 下的文件；禁止修改 scripts/、配置文件、package.json、.env",
-    "2. 不引入新的 npm 依赖，不改动整体架构",
-    "3. 保持现有代码风格（2 空格缩进、双引号、lib/i18n/translations.ts 的双语约定：界面文案必须同时更新 zh 与 en 两份词条）",
-    "4. 优先做小而正确的修改；单次最多 8 个文件；不要重写大文件的全部内容，除非反馈明确要求",
-    "5. 输出严格 JSON（不要 markdown 代码块）:",
-    '{"summary":"中文一句话总结","edits":[{"path":"相对路径","content":"文件完整新内容","action":"write"}],"skipped":[{"content":"无法处理的反馈原文","reason":"原因"}]}',
-    "如某条反馈与代码无关 / 信息不足 / 属于纯讨论，放进 skipped，不要凭空猜测乱改。",
+    "1. 修改前必须先读一遍要改的文件；绝不允许编造不存在的导入/组件/函数", 
+    "2. 只允许修改或新建 app/**、components/**、lib/**、public/** 下的文件；禁止修改 scripts/、配置文件、package.json、.env",
+    "3. 不引入新的 npm 依赖，不改动整体架构",
+    "4. 保持现有代码风格（2 空格缩进、双引号），界面文案使用 lib/i18n/translations.ts 的双语约定：同时更新 zh 与 en 两份词条",
+    "5. 优先小而正确的修改；单次最多 8 个文件",
+    "6. 输出必须是合法 JSON，不要 markdown 代码块、不要解释性文字",
+    "",
+    "参考（现有 i18n 用法，仅供确认，仍需读文件核实）:",
+    'import { useLang } from "@/lib/i18n/context"; const { lang, t } = useLang(); t.nav.bank',
   ].join("\n");
   const fileList = listRepoFiles().slice(0, 400).join("\n");
-  const user = [
+  const firstUser = [
     "## 用户反馈（全部需处理，按时间从旧到新）",
     feedback.map((it, i) => `${i + 1}. [${new Date(it.createdAt).toISOString()}] ${it.content}`).join("\n"),
     "",
     "## 仓库文件清单（相对路径，含大小）",
     fileList,
   ].join("\n");
-  const resp = await client.messages.create({
-    model,
-    max_tokens: 16000,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-  const text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-  const cleaned = text.replace(/^```(?:json)?\s*/m, "").replace(/```\s*$/m, "").trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  const parsed = JSON.parse(cleaned.slice(start, end + 1));
-  return parsed;
+
+  const parseJson = (text) => {
+    const cleaned = text.replace(/^```(?:json)?\s*/m, "").replace(/```\s*$/m, "").trim();
+    const s = cleaned.indexOf("{"); const e = cleaned.lastIndexOf("}");
+    if (s < 0 || e < 0) throw new Error("no json in model reply");
+    return JSON.parse(cleaned.slice(s, e + 1));
+  };
+  const readFile = (rel) => {
+    const normalized = safePath(rel);
+    if (!normalized) return null;
+    const abs = path.join(REPO, normalized);
+    try {
+      let content = fs.readFileSync(abs, "utf-8");
+      if (Buffer.byteLength(content, "utf-8") > 40_000) content = content.slice(0, 40_000) + "\n/* …已截断 */";
+      return `### ${normalized}\n\`\`\`\n${content}\n\`\`\``;
+    } catch { return null; }
+  };
+
+  const convo = [{ role: "user", content: firstUser }];
+  for (let round = 1; round <= 5; round++) {
+    const resp = await client.messages.create({
+      model,
+      max_tokens: 16000,
+      system,
+      messages: convo,
+    });
+    const text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    const parsed = parseJson(text);
+    if (parsed.kind === "read" && Array.isArray(parsed.paths)) {
+      const whats = (parsed.paths || []).map((p) => readFile(p)).filter(Boolean).join("\n\n");
+      convo.push({ role: "assistant", content: text }, { role: "user", content: whatOrDefault(whats, parsed.paths) });
+      continue;
+    }
+    if (parsed.kind === "edit") return parsed;
+    return parsed; // 兜底：直接给了 edits 结构
+  }
+  throw new Error("agent rounds exhausted");
+}
+
+function whatOrDefault(whats, paths) {
+  return whats || ("以下文件读取失败（不存在或不允许读取）：" + JSON.stringify(paths) + "\n请基于已有信息继续。");
 }
 
 async function applyEdits(edits) {
