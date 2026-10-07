@@ -109,7 +109,7 @@ npm run dev
 
 ## 🖥 二、服务器部署（教学）
 
-以 Ubuntu 24.04 为例，目标：服务跑在 **8001 端口**、开机可用、每天 9 点自动推送。
+以 Ubuntu 24.04 为例，目标：服务跑在 **8001 端口**、开机可用、每天 8 点自动推送。
 
 ### 1. 安装 Node 20+
 
@@ -178,12 +178,12 @@ npx pm2 restart ai-tutor-web    # 重启（改 .env 后必须重启才生效）
 npx pm2 delete ai-tutor-web     # 删除
 ```
 
-### 5. 配置每天 9:00 的企业微信推送
+### 5. 配置每天 8:00 的企业微信推送
 
 ```bash
 crontab -e
 # 加入一行：
-0 9 * * * DAILY_PUSH_HOST=http://127.0.0.1:8001 /home/你的用户/apps/AI-infra-tutor/scripts/daily-push.sh
+0 8 * * * DAILY_PUSH_HOST=http://127.0.0.1:8001 /home/你的用户/apps/AI-infra-tutor/scripts/daily-push.sh
 ```
 
 脚本逻辑：调用 `POST /api/notify/daily-push`，失败自动重试 3 次，日志写在 `~/logs/daily-push.log`。

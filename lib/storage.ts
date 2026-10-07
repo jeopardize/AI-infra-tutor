@@ -124,7 +124,7 @@ export function saveQuestionProgress(progress: QuestionProgressMap) {
   reportProgressToServer(progress);
 }
 
-/** 掌握度上报到服务端（git 持久化），供每日 9 点推送使用 */
+/** 掌握度上报到服务端（git 持久化），供每日 8 点推送使用 */
 let _progressReportTimer: ReturnType<typeof setTimeout> | null = null;
 function reportProgressToServer(progress: QuestionProgressMap) {
   if (typeof window === "undefined") return;

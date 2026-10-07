@@ -6,7 +6,7 @@ import type { ServerQuestionProgress } from "@/lib/notify/progress";
 export const PUSH_COUNT = 10;
 
 /**
- * 每日题目集合：每天挑选一批，同时用于企业微信 9 点推送和网页总览页。
+ * 每日题目集合：每天挑选一批，同时用于企业微信 8 点推送和网页总览页。
  */
 export interface DailySet {
   date: string;

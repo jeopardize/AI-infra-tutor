@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 每日 9 点推送脚本 —— 由 crontab 调用。
+# 每日 8 点推送脚本 —— 由 crontab 调用。
 # 优先调用本地 Next 服务的 HTTP API；服务不可用时退出码非 0。
 set -u
 

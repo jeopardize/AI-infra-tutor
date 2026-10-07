@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import type { QuestionItem } from "@/lib/storage";
 import { EditQuestionDialog, type BankCategoryOption } from "./EditQuestionDialog";
+import { CategoryTree } from "./CategoryTree";
 import { exportAsJson, exportAsMarkdown } from "./exportUtils";
 import { Download, Search } from "lucide-react";
 
@@ -112,28 +113,31 @@ function QuestionCard({ item, categories, onEdit, onDelete }: EditableRowProps) 
 
 export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }: Props) {
   const t = useT();
-  const [filterCategory, setFilterCategory] = useState("");
+  const [filterPath, setFilterPath] = useState("");
   const [searchText, setSearchText] = useState("");
   const [editing, setEditing] = useState<BankQuestion | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const categoryOptions: BankCategoryOption[] = useMemo(() => {
-    const merged = [
-      ...categories,
-      { path: "data", label: OTHER_CATEGORY, file: "data/other_question.md" },
-    ];
-    const seen = new Set<string>();
-    return merged.filter((c) => {
-      const k = c.label;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-  }, [categories]);
+  const countOf = useCallback(
+    (path: string): number => {
+      if (path === "data") {
+        return items.filter((q) => q.file === "data/other_question.md").length;
+      }
+      const own = `${path}/question.md`;
+      return items.filter((q) => q.file === own || q.file?.startsWith(`${path}/`)).length;
+    },
+    [items],
+  );
 
   const filtered = useMemo(() => {
     return items.filter((q) => {
-      const matchCategory = !filterCategory || q.category === filterCategory;
+      let matchCategory = true;
+      if (filterPath === "data") {
+        matchCategory = q.file === "data/other_question.md";
+      } else if (filterPath) {
+        const own = `${filterPath}/question.md`;
+        matchCategory = q.file === own || (q.file?.startsWith(`${filterPath}/`) ?? false);
+      }
       const matchSearch =
         !searchText ||
         q.question.zh.includes(searchText) ||
@@ -142,7 +146,7 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
         q.answer.en.toLowerCase().includes(searchText.toLowerCase());
       return matchCategory && matchSearch;
     });
-  }, [items, filterCategory, searchText]);
+  }, [items, filterPath, searchText]);
 
   async function handleDelete(item: BankQuestion) {
     if (!confirm(t.bank.deleteConfirm)) return;
@@ -178,97 +182,77 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
         在网页中编辑题目并修改分类时，会自动把它移动到所属文件夹的 question.md 下。
       </div>
 
-      {/* Category tabs */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-        <button
-          onClick={() => setFilterCategory("")}
-          className={`shrink-0 px-3 py-1.5 text-xs rounded-full font-medium transition ${
-            filterCategory === ""
-              ? "bg-blue-600 text-white"
-              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-          }`}
-        >
-          {t.bank.allCategories}
-        </button>
-        {categoryOptions.map((c) => {
-          const count = items.filter((q) => q.category === c.label).length;
-          return (
-            <button
-              key={c.path}
-              onClick={() => setFilterCategory(filterCategory === c.label ? "" : c.label)}
-              className={`shrink-0 px-3 py-1.5 text-xs rounded-full font-medium transition ${
-                filterCategory === c.label
-                  ? "bg-blue-600 text-white"
-                  : c.label === OTHER_CATEGORY && otherCount > 0
-                    ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              }`}
-            >
-              {c.label === OTHER_CATEGORY ? "其他" : c.label} {count > 0 ? `(${count})` : ""}
-            </button>
-          );
-        })}
-      </div>
+      {/* 分类：文件夹树 */}
+      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-start">
+        <CategoryTree
+          categories={categories}
+          countOf={countOf}
+          selected={filterPath}
+          onSelect={(p) => setFilterPath((prev) => (prev === p ? "" : p))}
+        />
 
-      {/* Search + export */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative flex-1 min-w-[160px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
-          <input
-            className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder={t.bank.searchPlaceholder}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-1">
-          <button
-            onClick={handleExportJson}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
-          >
-            <Download className="w-3 h-3" />
-            {t.bank.exportJson}
-          </button>
-          <button
-            onClick={handleExportMarkdown}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
-          >
-            <Download className="w-3 h-3" />
-            {t.bank.exportMarkdown}
-          </button>
+        <div className="space-y-3 min-w-0">
+          {/* Search + export */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative flex-1 min-w-[160px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+              <input
+                className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder={t.bank.searchPlaceholder}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={handleExportJson}
+                disabled={filtered.length === 0}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+              >
+                <Download className="w-3 h-3" />
+                {t.bank.exportJson}
+              </button>
+              <button
+                onClick={handleExportMarkdown}
+                disabled={filtered.length === 0}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+              >
+                <Download className="w-3 h-3" />
+                {t.bank.exportMarkdown}
+              </button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="text-xs text-zinc-500">
+            {filtered.length} / {items.length}
+          </div>
+
+          {/* Cards */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
+              {t.bank.noQuestions}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {filtered.map((q) => (
+                <QuestionCard
+                  key={q.id}
+                  item={q}
+                  categories={categories}
+                  onEdit={() => setEditing(q)}
+                  onDelete={() => handleDelete(q)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Stats */}
-      <div className="text-xs text-zinc-500">
-        {filtered.length} / {items.length}
-      </div>
-
-      {/* Cards */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
-          {t.bank.noQuestions}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filtered.map((q) => (
-            <QuestionCard
-              key={q.id}
-              item={q}
-              categories={categoryOptions}
-              onEdit={() => setEditing(q)}
-              onDelete={() => handleDelete(q)}
-            />
-          ))}
-        </div>
-      )}
 
       {editing && (
         <EditQuestionDialog
           item={editing}
-          categories={categoryOptions}
+          categories={categories}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

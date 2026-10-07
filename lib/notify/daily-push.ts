@@ -14,7 +14,7 @@ import { ensureDailySet, markDailySetSent, type DailySet } from "@/lib/questions
 import type { QuestionItem } from "@/lib/storage";
 
 /**
- * 每日 9 点推送到企业微信（智能机器人长连接）：
+ * 每日 8 点推送到企业微信（智能机器人长连接）：
  * 1. 从题库（笔记库 question.md 文件）挑选当日题目并持久化（与网页总览页共用）
  * 2. 结合笔记库目录和掌握度统计，让 LLM 生成"笔记缺失点"总结
  */

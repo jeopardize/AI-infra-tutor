@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 每周五自动化流水线（crontab 触发，需先 source .env 提供 Anthropic key）
+# 每周日自动化流水线（原周五流水线，现改为周日发布）（crontab 触发，需先 source .env 提供 Anthropic key）
 # 流程：预检 → 读取反馈并让 LLM 润色代码（tsc+build 校验，失败回滚）→ 推 GitHub
 #       → 数据迁移（题库/简历/反馈/笔记 push）→ 重启部署 → 标记反馈已处理
 set -u

@@ -359,7 +359,7 @@ const zh: Dict = {
   feedback: {
     title: "意见反馈",
     subtitle:
-      "写下你对产品的建议、缺陷或想要的改进。每周五系统会自动读取并按反馈润色代码。",
+      "写下你对产品的建议、缺陷或想要的改进。每周日系统会自动读取并按反馈润色代码。",
     placeholder: "写下你的想法 — 描述越具体，改进越有针对性",
     submit: "提交反馈",
     submittedAt: (d) => `${d} 提交`,
@@ -368,7 +368,7 @@ const zh: Dict = {
     empty: "还没有反馈，写下第一条吧",
     count: (n, done) => `共 ${n} 条，已处理 ${done}`,
     deleteConfirm: "确定删除这条反馈吗？",
-    note: "已处理的反馈会在每周五自动润色代码后归档",
+    note: "已处理的反馈会在每周日自动润色代码后归档",
   },
   dashboard: {
     welcomeTitle: "欢迎，开始你的 AI Infra 学习之旅",
