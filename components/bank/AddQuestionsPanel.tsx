@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import { SingleQuestionForm } from "./SingleQuestionForm";
 import { BatchQuestionForm } from "./BatchQuestionForm";
-import { ALL_TOPICS, CATEGORY_META } from "@/lib/knowledge";
 import { CategoryTree, OTHER_CATEGORY } from "./CategoryTree";
 import type { BankCategoryOption } from "./EditQuestionDialog";
 
@@ -21,7 +20,6 @@ function labelOf(c: BankCategoryOption): string {
 export function AddQuestionsPanel({ categories, onSaved }: Props) {
   const t = useT();
   const [mode, setMode] = useState<"single" | "batch">("single");
-  const [topicId, setTopicId] = useState<string>("");
   // 默认分类：其他（data/other_question.md）
   const [selectedPath, setSelectedPath] = useState<string>("data");
 
@@ -31,26 +29,6 @@ export function AddQuestionsPanel({ categories, onSaved }: Props) {
 
   return (
     <div className="space-y-5">
-      {/* Topic selection */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          所属主题（Topic）
-        </label>
-        <select
-          className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={topicId}
-          onChange={(e) => setTopicId(e.target.value)}
-        >
-          <option value="">不关联主题（仅用作题库）</option>
-          {ALL_TOPICS.map((topic) => (
-            <option key={topic.id} value={topic.id}>
-              [{CATEGORY_META[topic.category].label}] {topic.title}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-zinc-500">选择主题后，题目会出现在主页统计和测验系统中</p>
-      </div>
-
       {/* Mode toggle */}
       <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
         <button
@@ -92,9 +70,9 @@ export function AddQuestionsPanel({ categories, onSaved }: Props) {
 
         <div className="min-w-0">
           {mode === "single" ? (
-            <SingleQuestionForm category={resolvedCategory} topicId={topicId} onSaved={() => onSaved?.()} />
+            <SingleQuestionForm category={resolvedCategory} onSaved={() => onSaved?.()} />
           ) : (
-            <BatchQuestionForm defaultCategory={resolvedCategory} topicId={topicId} onSaved={() => onSaved?.()} />
+            <BatchQuestionForm defaultCategory={resolvedCategory} onSaved={() => onSaved?.()} />
           )}
         </div>
       </div>

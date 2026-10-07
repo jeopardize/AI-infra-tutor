@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import type { QuestionItem } from "@/lib/storage";
-import { ALL_TOPICS, CATEGORY_META } from "@/lib/knowledge";
 import { Loader2, Sparkles, X } from "lucide-react";
 
 export interface BankCategoryOption {
@@ -26,7 +25,6 @@ export function EditQuestionDialog({ item, categories, onClose, onSaved }: Props
   const [aZh, setAZh] = useState(item.answer.zh);
   const [aEn, setAEn] = useState(item.answer.en);
   const [category, setCategory] = useState(item.category);
-  const [topicId, setTopicId] = useState(item.topicId || "");
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -71,7 +69,6 @@ export function EditQuestionDialog({ item, categories, onClose, onSaved }: Props
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: item.id,
-          topicId: topicId || undefined,
           category,
           question: { zh: qZh, en: qEn },
           answer: { zh: aZh, en: aEn },
@@ -126,22 +123,6 @@ export function EditQuestionDialog({ item, categories, onClose, onSaved }: Props
                 ))}
               </select>
               <p className="text-xs text-zinc-400">题目严格存放在该文件夹的 question.md 中</p>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-500">所属主题（Topic）</label>
-              <select
-                className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={topicId}
-                onChange={(e) => setTopicId(e.target.value)}
-              >
-                <option value="">不关联主题（仅用作题库）</option>
-                {ALL_TOPICS.map((topic) => (
-                  <option key={topic.id} value={topic.id}>
-                    [{CATEGORY_META[topic.category].label}] {topic.title}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div className="space-y-1">

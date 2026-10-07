@@ -6,7 +6,6 @@ import { Loader2, Sparkles } from "lucide-react";
 
 interface Props {
   category: string;
-  topicId?: string;
   onSaved: () => void;
 }
 
@@ -41,7 +40,6 @@ function Field({
 
 export async function postQuestion(item: {
   category: string;
-  topicId?: string;
   question: { zh: string; en: string };
   answer: { zh: string; en: string };
 }): Promise<void> {
@@ -50,7 +48,6 @@ export async function postQuestion(item: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       category: item.category,
-      topicId: item.topicId || undefined,
       question: item.question,
       answer: item.answer,
     }),
@@ -61,7 +58,7 @@ export async function postQuestion(item: {
   }
 }
 
-export function SingleQuestionForm({ category, topicId, onSaved }: Props) {
+export function SingleQuestionForm({ category, onSaved }: Props) {
   const t = useT();
   const [qZh, setQZh] = useState("");
   const [qEn, setQEn] = useState("");
@@ -110,7 +107,6 @@ export function SingleQuestionForm({ category, topicId, onSaved }: Props) {
     try {
       await postQuestion({
         category,
-        topicId,
         question: { zh: qZh, en: qEn },
         answer: { zh: aZh, en: aEn },
       });
