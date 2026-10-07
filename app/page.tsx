@@ -32,7 +32,7 @@ interface DailySet {
   emptyReason?: string;
 }
 
-/** 单道题的作答状态（跨页面持久化） */
+/** 单道题的作答状态 */
 interface QAnswerState {
   draft: string;
   attempts: string[];
@@ -53,7 +53,7 @@ const emptyState = (): QAnswerState => ({
   error: "",
 });
 
-const KEY_DAILY_STATE = "ai-infra-tutor:daily-answer-state:v1";
+const KEY_DAILY_STATE = "ai-infra-tutor:daily-answer-state:v2";
 
 interface PersistShape {
   states: Record<string, QAnswerState>;
@@ -61,12 +61,84 @@ interface PersistShape {
   savedAt: number;
 }
 
+/**
+ * 客户端导航期间也存活的全局记忆：
+ * - SPA 内切页不丢（memStore 常驻）
+ * - 刷新/关页后从 localStorage 恢复
+ * - 批改请求在后台完成时，即使页面已切走，结果也写入 memStore，返回后可见
+ */
+let memStore: PersistShape | null = null;
+
+function readPersist(): PersistShape {
+  if (!memStore) {
+    let shape: PersistShape = { states: {}, openIds: [], savedAt: 0 };
+    try {
+      shape =
+        (JSON.parse(window.localStorage.getItem(KEY_DAILY_STATE) ?? "null") as PersistShape) ??
+        shape;
+    } catch {}
+    memStore = shape;
+  }
+  return memStore;
+}
+
+function writePersist(shape: PersistShape): void {
+  memStore = shape;
+  try {
+    window.localStorage.setItem(KEY_DAILY_STATE, JSON.stringify(shape));
+  } catch {}
+}
+
 export default function HomePage() {
   const [daily, setDaily] = useState<DailySet | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [openIds, setOpenIds] = useState<string[]>([]);
   const [states, setStates] = useState<Record<string, QAnswerState>>({});
+  const [openIds, setOpenIds] = useState<string[]>([]);
+  const [restored, setRestored] = useState(false);
+
+  // 恢复：优先模块级记忆（同一次会话内切页），否则用 localStorage（冷启动/刷新）
+  useEffect(() => {
+    const fromMem = memStore !== null;
+    const shape = readPersist();
+    const clean: Record<string, QAnswerState> = {};
+    for (const [id, s] of Object.entries(shape.states ?? {})) {
+      clean[id] = {
+        ...emptyState(),
+        ...s,
+        // 冷启动（刷新）时不要恢复悬挂的"批改中"状态；SPA 内切页返回则保留（请求可能仍在后台）
+        grading: fromMem ? !!s.grading : false,
+        savingStandard: false,
+      };
+    }
+    setStates(clean);
+    setOpenIds((shape.openIds ?? []).filter(Boolean));
+    setRestored(true);
+  }, []);
+
+  // 状态变化即持久化
+  useEffect(() => {
+    if (!restored) return;
+    writePersist({ states, openIds, savedAt: Date.now() });
+  }, [restored, states, openIds]);
+
+  // 统一提交入口：同时写 memStore（切页存活）和 React state
+  const commitStates = useCallback(
+    (updater: (prev: Record<string, QAnswerState>) => Record<string, QAnswerState>) => {
+      const shape = readPersist();
+      const next = updater(shape.states ?? {});
+      memStore = { ...shape, states: next, savedAt: Date.now() };
+      setStates(next);
+    },
+    [],
+  );
+
+  const commitOpenIds = useCallback((updater: (prev: string[]) => string[]) => {
+    const shape = readPersist();
+    const next = updater(shape.openIds ?? []);
+    memStore = { ...shape, openIds: next, savedAt: Date.now() };
+    setOpenIds(next);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -75,46 +147,22 @@ export default function HomePage() {
         const data = (await res.json()) as DailySet;
         setDaily(data);
         if (data.error) setLoadError(data.error);
-        if (data.questions?.length) {
-          const ids = new Set(data.questions.map((q) => q.id));
-          let saved: PersistShape | null = null;
-          try {
-            saved = JSON.parse(window.localStorage.getItem(KEY_DAILY_STATE) ?? "null");
-          } catch {}
-          // 只保留属于今日题目的状态（跨页面/刷新恢复）
-          if (saved?.states) {
-            const kept = Object.fromEntries(
-              Object.entries(saved.states).filter(([id]) => ids.has(id)),
-            );
-            for (const id of Object.keys(kept)) {
-              kept[id] = { ...emptyState(), ...kept[id], grading: false, savingStandard: false };
-            }
-            setStates(kept);
-            setOpenIds((saved.openIds ?? []).filter((id) => ids.has(id)));
-          }
-        }
+        const ids = new Set((data.questions ?? []).map((q) => q.id));
+        // 清掉不属于今日的旧状态
+        commitStates((prev) =>
+          Object.fromEntries(Object.entries(prev).filter(([id]) => ids.has(id))),
+        );
+        commitOpenIds((prev) => prev.filter((id) => ids.has(id)));
       } catch (e) {
         setLoadError((e as Error).message);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
-
-  // 状态变化即持久化（跨页面/刷新恢复）
-  useEffect(() => {
-    try {
-      const shape: PersistShape = { states, openIds, savedAt: Date.now() };
-      window.localStorage.setItem(KEY_DAILY_STATE, JSON.stringify(shape));
-    } catch {}
-  }, [states, openIds]);
-
-  const patchState = useCallback((id: string, patch: Partial<QAnswerState>) => {
-    setStates((prev) => ({ ...prev, [id]: { ...emptyState(), ...prev[id], ...patch } }));
-  }, []);
+  }, [commitStates, commitOpenIds]);
 
   function toggleOpen(id: string) {
-    setOpenIds((prev) =>
+    commitOpenIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   }
@@ -122,64 +170,82 @@ export default function HomePage() {
   const contextId = openIds[openIds.length - 1];
   const contextQuestion = daily?.questions.find((q) => q.id === contextId);
 
-  /** 提交作答：AI 批改在后台进行，不阻塞其他题目 */
+  /** 提交作答：AI 批改在后台进行，切页也不丢结果 */
   const submitAnswer = useCallback(
-    async (q: DailyQuestion) => {
-      const s = states[q.id] ?? emptyState();
+    (q: DailyQuestion) => {
+      const prev = readPersist().states ?? {};
+      const s = { ...emptyState(), ...prev[q.id] };
       const a = s.draft.trim();
       if (!a || s.grading) return;
-      patchState(q.id, { grading: true, error: "" });
-      const standard = q.answer.zh || "";
-      try {
-        const res = await fetch("/api/quiz/evaluate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            checkpointId: `bank-${q.id}`,
+      commitStates((p) => ({
+        ...p,
+        [q.id]: { ...emptyState(), ...p[q.id], grading: true, error: "" },
+      }));
+      (async () => {
+        try {
+          const res = await fetch("/api/quiz/evaluate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              checkpointId: `bank-${q.id}`,
+              question: q.question.zh || q.question.en,
+              answer: a,
+              referenceAnswer: q.answer.zh || "",
+            }),
+          });
+          if (!res.ok)
+            throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+          const ev = (await res.json()) as QuizEvaluation;
+          commitStates((p) => {
+            const cur = { ...emptyState(), ...p[q.id] };
+            return {
+              ...p,
+              [q.id]: {
+                ...cur,
+                grading: false,
+                evaluation: ev,
+                attempts: [...cur.attempts, a],
+                draft: "",
+              },
+            };
+          });
+          recordQuestionQuizResult(q.id, ev.score);
+          pushQuizHistory({
+            questionId: q.id,
+            topicId: q.topicId,
+            category: q.category,
+            source: "bank",
             question: q.question.zh || q.question.en,
             answer: a,
-            referenceAnswer: standard,
-          }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
-        const ev = (await res.json()) as QuizEvaluation;
-        setStates((prev) => {
-          const cur = { ...emptyState(), ...prev[q.id] };
-          return {
-            ...prev,
+            evaluation: ev,
+            at: Date.now(),
+          });
+        } catch (e) {
+          commitStates((p) => ({
+            ...p,
             [q.id]: {
-              ...cur,
+              ...emptyState(),
+              ...p[q.id],
               grading: false,
-              evaluation: ev,
-              attempts: [...cur.attempts, a],
-              draft: "",
+              error: (e as Error).message,
             },
-          };
-        });
-        recordQuestionQuizResult(q.id, ev.score);
-        pushQuizHistory({
-          questionId: q.id,
-          topicId: q.topicId,
-          category: q.category,
-          source: "bank",
-          question: q.question.zh || q.question.en,
-          answer: a,
-          evaluation: ev,
-          at: Date.now(),
-        });
-      } catch (e) {
-        patchState(q.id, { grading: false, error: (e as Error).message });
-      }
+          }));
+        }
+      })();
     },
-    [states, patchState],
+    [commitStates],
   );
 
   /** 把我的本次答案保存为标准答案（写入笔记库 question.md） */
   const saveStandard = useCallback(
     async (q: DailyQuestion, text: string): Promise<boolean> => {
-      const s = states[q.id] ?? emptyState();
+      const prev = readPersist().states ?? {};
+      const s = { ...emptyState(), ...prev[q.id] };
       if (s.savingStandard) return false;
-      patchState(q.id, { savingStandard: true });
+      commitStates((p) => ({
+        ...p,
+        [q.id]: { ...emptyState(), ...p[q.id], savingStandard: true },
+      }));
       try {
         const res = await fetch("/api/questions", {
           method: "POST",
@@ -194,10 +260,11 @@ export default function HomePage() {
             prevFile: q.file,
           }),
         });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
-        setStates((prev) => ({
-          ...prev,
-          [q.id]: { ...emptyState(), ...prev[q.id], savingStandard: false, savedStandard: true },
+        if (!res.ok)
+          throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+        commitStates((p) => ({
+          ...p,
+          [q.id]: { ...emptyState(), ...p[q.id], savingStandard: false, savedStandard: true },
         }));
         // 同步更新页面上的标准答案展示
         setDaily((d) =>
@@ -213,11 +280,21 @@ export default function HomePage() {
         return true;
       } catch (e) {
         alert(`保存失败：${(e as Error).message}`);
-        patchState(q.id, { savingStandard: false });
+        commitStates((p) => ({
+          ...p,
+          [q.id]: { ...emptyState(), ...p[q.id], savingStandard: false },
+        }));
         return false;
       }
     },
-    [states, patchState],
+    [commitStates],
+  );
+
+  const patchDraft = useCallback(
+    (id: string, v: string) => {
+      commitStates((p) => ({ ...p, [id]: { ...emptyState(), ...p[id], draft: v } }));
+    },
+    [commitStates],
   );
 
   return (
@@ -233,7 +310,7 @@ export default function HomePage() {
           )}
         </div>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          与每天早上企业微信推送的题目同步。点击题目展开答题卡片，提交后自动对比标准答案；AI 批改在后台进行，可以同时作答多题。
+          与每天早上企业微信推送的题目同步。点击题目展开答题卡片，提交后自动对比标准答案；AI 批改在后台进行，切页不丢结果。
         </p>
       </section>
 
@@ -268,11 +345,18 @@ export default function HomePage() {
                       <AnswerPanel
                         q={q}
                         state={states[q.id] ?? emptyState()}
-                        onDraft={(v) => patchState(q.id, { draft: v })}
+                        onDraft={(v) => patchDraft(q.id, v)}
                         onSubmit={() => submitAnswer(q)}
                         onSaveStandard={(t) => saveStandard(q, t)}
-                        onRetry={() => patchState(q.id, { evaluation: null })}
-                        onClose={() => setOpenIds((prev) => prev.filter((x) => x !== q.id))}
+                        onRetry={() =>
+                          commitStates((p) => ({
+                            ...p,
+                            [q.id]: { ...emptyState(), ...p[q.id], evaluation: null },
+                          }))
+                        }
+                        onClose={() =>
+                          commitOpenIds((prev) => prev.filter((x) => x !== q.id))
+                        }
                       />
                     </div>
                   )}
@@ -322,8 +406,7 @@ function QuestionCard({
   const progress = loadQuestionProgress();
   const p = progress[q.id];
   const isOther = q.category === "其他";
-  const hasResult = !!state.evaluation;
-  const loadingBadge = state.grading;
+  const hasResult = !!state.evaluation || state.grading;
 
   return (
     <button
@@ -345,8 +428,8 @@ function QuestionCard({
         {p?.status === "mastered" && "✅"}
         {p?.status === "learning" && "🟡"}
         {p?.status === "gap" && "🔴"}
-        {loadingBadge && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
-        {!loadingBadge && hasResult && !open && (
+        {state.grading && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+        {!state.grading && hasResult && !open && (
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
         )}
       </div>
@@ -403,7 +486,7 @@ function AnswerPanel({
         {state.grading && (
           <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-md px-3 py-2">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            AI 批改中… 可以先去回答其他题目，批改完成后这张卡片会自动更新。
+            AI 批改中… 可以切换页面或去回答其他题目，批改完成后这张卡片会自动更新。
           </div>
         )}
 
