@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import { SingleQuestionForm } from "./SingleQuestionForm";
 import { BatchQuestionForm } from "./BatchQuestionForm";
 import { ALL_TOPICS, CATEGORY_META } from "@/lib/knowledge";
+import { CategoryTree, OTHER_CATEGORY } from "./CategoryTree";
 import type { BankCategoryOption } from "./EditQuestionDialog";
 
 interface Props {
@@ -12,10 +13,21 @@ interface Props {
   onSaved?: () => void;
 }
 
+/** 单层提取题目标签里显示的目录段（取最后一段） */
+function labelOf(c: BankCategoryOption): string {
+  return c.path === "data" ? OTHER_CATEGORY : c.label;
+}
+
 export function AddQuestionsPanel({ categories, onSaved }: Props) {
   const t = useT();
   const [mode, setMode] = useState<"single" | "batch">("single");
   const [topicId, setTopicId] = useState<string>("");
+  // 默认分类：其他（data/other_question.md）
+  const [selectedPath, setSelectedPath] = useState<string>("data");
+
+  const resolvedCategory = selectedPath === "data" ? OTHER_CATEGORY : labelOf(categories.find((c) => c.path === selectedPath) ?? { path: selectedPath, label: selectedPath.split("/").pop() ?? selectedPath, file: "" });
+
+  const targetFile = selectedPath === "data" ? "data/other_question.md" : `${selectedPath}/question.md`;
 
   return (
     <div className="space-y-5">
@@ -37,17 +49,6 @@ export function AddQuestionsPanel({ categories, onSaved }: Props) {
           ))}
         </select>
         <p className="text-xs text-zinc-500">选择主题后，题目会出现在主页统计和测验系统中</p>
-      </div>
-
-      {/* Category selection: 会直接决定 question.md 存放位置 */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          {t.bank.category}（笔记库文件夹 · 决定文件存放位置）
-        </label>
-        <p className="text-xs text-zinc-500">
-          在下方模式中选择目标分类；题目会被写入对应文件夹的 question.md
-          {` `}（「其他」→ data/other_question.md）
-        </p>
       </div>
 
       {/* Mode toggle */}
@@ -74,78 +75,29 @@ export function AddQuestionsPanel({ categories, onSaved }: Props) {
         </button>
       </div>
 
-      {mode === "single" ? (
-        <SingleQuestionPanel categories={categories} topicId={topicId} onSaved={onSaved} />
-      ) : (
-        <CategoryBatchPanel categories={categories} topicId={topicId} onSaved={onSaved} />
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-start">
+        {/* 分类文件夹树（与笔记库一致） */}
+        <div>
+          <div className="text-xs font-medium text-zinc-500 mb-2">目标分类（写入哪里的 question.md）</div>
+          <CategoryTree
+            categories={categories}
+            countOf={() => 0}
+            selected={selectedPath}
+            onSelect={setSelectedPath}
+          />
+          <p className="mt-2 text-[10px] text-zinc-400">
+            将写入 <code className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded break-all">{targetFile}</code>
+          </p>
+        </div>
+
+        <div className="min-w-0">
+          {mode === "single" ? (
+            <SingleQuestionForm category={resolvedCategory} topicId={topicId} onSaved={() => onSaved?.()} />
+          ) : (
+            <BatchQuestionForm defaultCategory={resolvedCategory} topicId={topicId} onSaved={() => onSaved?.()} />
+          )}
+        </div>
+      </div>
     </div>
-  );
-}
-
-function SingleQuestionPanel({
-  categories,
-  topicId,
-  onSaved,
-}: {
-  categories: BankCategoryOption[];
-  topicId: string;
-  onSaved?: () => void;
-}) {
-  const [category, setCategory] = useState("");
-  return (
-    <>
-      <CategoryPicker categories={categories} value={category} onChange={setCategory} />
-      {category ? (
-        <SingleQuestionForm category={category} topicId={topicId} onSaved={() => onSaved?.()} />
-      ) : (
-        <div className="text-sm text-amber-600 dark:text-amber-400">请先选择分类</div>
-      )}
-    </>
-  );
-}
-
-function CategoryBatchPanel({
-  categories,
-  topicId,
-  onSaved,
-}: {
-  categories: BankCategoryOption[];
-  topicId: string;
-  onSaved?: () => void;
-}) {
-  const [category, setCategory] = useState("");
-  return (
-    <>
-      <CategoryPicker categories={categories} value={category} onChange={setCategory} allowEmpty />
-      <BatchQuestionForm defaultCategory={category} topicId={topicId} onSaved={() => onSaved?.()} />
-    </>
-  );
-}
-
-export function CategoryPicker({
-  categories,
-  value,
-  onChange,
-  allowEmpty,
-}: {
-  categories: BankCategoryOption[];
-  value: string;
-  onChange: (v: string) => void;
-  allowEmpty?: boolean;
-}) {
-  return (
-    <select
-      className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="">{allowEmpty ? "不指定（每行可用「分类 || 题目」分别指定）" : "选择分类…"}</option>
-      {categories.map((c) => (
-        <option key={c.path} value={c.label}>
-          {c.path === "data" ? "其他（data/other_question.md）" : `${c.label}（${c.path}/question.md）`}
-        </option>
-      ))}
-    </select>
   );
 }

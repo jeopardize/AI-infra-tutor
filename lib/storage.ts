@@ -146,7 +146,11 @@ export function getQuestionProgress(questionId: string): QuestionProgress {
   return p[questionId] ?? { status: "unknown", attempts: 0 };
 }
 
-export function recordQuestionQuizResult(questionId: string, score: number) {
+export function recordQuestionQuizResult(
+  questionId: string,
+  score: number,
+  label?: string,
+) {
   const p = loadQuestionProgress();
   const cur = p[questionId] ?? { status: "unknown", attempts: 0 };
   let status: MasteryStatus;
@@ -160,7 +164,62 @@ export function recordQuestionQuizResult(questionId: string, score: number) {
     lastReviewedAt: Date.now(),
   };
   saveQuestionProgress(p);
+  // 错题本：分数 < 60 自动加入收藏
+  if (score < 60) {
+    fetch("/api/favorites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questionId, auto: true, score, label }),
+    }).catch((err) =>
+      console.error("[favorites auto-add] failed:", err),
+    );
+  }
   return status;
+}
+
+// ---------------- Favorites（收藏/错题本） ----------------
+
+export interface FavoriteEntry {
+  questionId: string;
+  favoritedAt: number;
+  auto?: boolean;
+  score?: number;
+  label?: string;
+}
+
+export async function loadFavorites(): Promise<Set<string>> {
+  try {
+    const res = await fetch("/api/favorites");
+    if (res.ok) {
+      const list = (await res.json()) as FavoriteEntry[];
+      return new Set(list.map((f) => f.questionId));
+    }
+  } catch {}
+  return new Set();
+}
+
+export function addFavorite(
+  questionId: string,
+  label?: string,
+  score?: number,
+): Promise<boolean> {
+  return fetch("/api/favorites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ questionId, label, score }),
+  }).then(
+    (r) => r.ok,
+    () => false,
+  );
+}
+
+export function removeFavorite(questionId: string): Promise<boolean> {
+  return fetch(`/api/favorites?id=${encodeURIComponent(questionId)}`, {
+    method: "DELETE",
+  }).then(
+    (r) => r.ok,
+    () => false,
+  );
 }
 
 // ---------------- Quiz history ----------------

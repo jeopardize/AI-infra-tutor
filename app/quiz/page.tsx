@@ -157,7 +157,11 @@ function QuizInner() {
         setEvaluation(data);
         setAttempts((prev) => [...prev, answer]);
         setAnswer("");
-        recordQuestionQuizResult(pickedQuestion.id, data.score);
+        recordQuestionQuizResult(
+          pickedQuestion.id,
+          data.score,
+          (pickedQuestion.question.zh || pickedQuestion.question.en).slice(0, 60),
+        );
         setProgress(loadProgress());
         pushQuizHistory({
           questionId: pickedQuestion.id,

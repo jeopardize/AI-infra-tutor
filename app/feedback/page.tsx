@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useLang } from "@/lib/i18n/context";
-import { Loader2, Send, Trash2, MessageSquarePlus } from "lucide-react";
+import {
+  Loader2,
+  Send,
+  Trash2,
+  MessageSquarePlus,
+  Archive,
+} from "lucide-react";
 import type { FeedbackItem } from "@/app/api/feedback/route";
 
 export default function FeedbackPage() {
@@ -60,6 +66,13 @@ export default function FeedbackPage() {
   const open = items.filter((it) => it.status === "open").length;
   const done = items.length - open;
 
+  const clearDone = async () => {
+    if (!confirm(`确认清掉 ${done} 条已处理反馈吗？（处理摘要已沉淀在版本发布记录中）`)) return;
+    const res = await fetch("/api/feedback?action=clear-done", { method: "POST" });
+    if (res.ok) await load();
+    else setError("清除失败");
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -102,7 +115,18 @@ export default function FeedbackPage() {
       {/* 列表 */}
       <div className="mt-6 flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
         <span>{items.length ? t.feedback.count(items.length, done) : ""}</span>
-        <span className="text-xs">{t.feedback.note}</span>
+        <div className="flex items-center gap-2">
+          {done > 0 && (
+            <button
+              onClick={clearDone}
+              title="已处理意见的总结已在每次版本发布的提交信息中沉淀，清掉列表即可"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              <Archive className="w-3.5 h-3.5" /> 清掉已处理（{done}）
+            </button>
+          )}
+          <span className="text-xs">{t.feedback.note}</span>
+        </div>
       </div>
 
       {loading ? (
@@ -115,10 +139,20 @@ export default function FeedbackPage() {
         </p>
       ) : (
         <ul className="mt-3 space-y-3">
-          {items.map((it) => (
+          {/* 待处理排前，已处理靠后淡化 */}
+          {[...items]
+            .sort((a, b) => {
+              if ((a.status === "open") !== (b.status === "open")) return a.status === "open" ? -1 : 1;
+              return b.createdAt - a.createdAt;
+            })
+            .map((it) => (
             <li
               key={it.id}
-              className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 bg-white dark:bg-[#292a2d]"
+              className={`border rounded-lg p-4 bg-white dark:bg-[#292a2d] ${
+                it.status === "open"
+                  ? "border-zinc-200 dark:border-zinc-700"
+                  : "border-zinc-100 dark:border-zinc-800 opacity-70"
+              }`}
             >
               <div className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
                 <span

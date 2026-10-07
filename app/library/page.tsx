@@ -8,6 +8,7 @@ import {
   Folder,
   FolderPlus,
   Loader2,
+  Pencil,
   RefreshCw,
 } from "lucide-react";
 import { DocDrawer } from "@/components/DocDrawer";
@@ -26,6 +27,28 @@ interface TreeResp {
   tree: DocNode;
   error?: string;
   hint?: string;
+}
+
+/** 序号前缀排序：带数字序号的在前（按数字升序，同级序号可比），无序号的殿后（按名称） */
+function extractPrefixNum(name: string): { num: number | null; rest: string } {
+  const m = name.trim().match(/^(\d+)[\s.、\-_]+(.*)$/);
+  if (m) return { num: parseInt(m[1], 10), rest: m[2] ?? "" };
+  return { num: null, rest: name.trim() };
+}
+
+function sortNodes(nodes: DocNode[]): DocNode[] {
+  const sorted = [...nodes].sort((a, b) => {
+    const pa = extractPrefixNum(a.name);
+    const pb = extractPrefixNum(b.name);
+    if (pa.num !== null && pb.num !== null) {
+      if (pa.num !== pb.num) return pa.num - pb.num;
+      return pa.rest.localeCompare(pb.rest, "zh");
+    }
+    if (pa.num !== null) return -1;
+    if (pb.num !== null) return 1;
+    return pa.rest.localeCompare(pb.rest, "zh");
+  });
+  return sorted;
 }
 
 export default function LibraryPage() {
@@ -53,6 +76,26 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(load, [load]);
+
+  async function renameNode(node: DocNode) {
+    const newName = window.prompt(`重命名「${node.name}」为：`, node.name);
+    if (!newName || newName.trim() === node.name) return;
+    if (/[\\<>:"|?*\0/]/.test(newName.trim())) {
+      alert("名称包含非法字符");
+      return;
+    }
+    const r = await fetch("/api/docs/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: node.path, newName: newName.trim() }),
+    });
+    const json = await r.json();
+    if (!r.ok) {
+      alert(`重命名失败：${json.error}`);
+      return;
+    }
+    load();
+  }
 
   // 绑定刷新快捷键：Ctrl/Cmd + R
   useEffect(() => {
@@ -159,6 +202,7 @@ export default function LibraryPage() {
             onOpen={setOpenPath}
             onNewFile={createFile}
             onNewDir={createDir}
+            onRename={renameNode}
           />
         </div>
       )}
@@ -178,12 +222,14 @@ function Tree({
   onOpen,
   onNewFile,
   onNewDir,
+  onRename,
 }: {
   node: DocNode;
   depth: number;
   onOpen: (p: string) => void;
   onNewFile: (parent: string) => void;
   onNewDir: (parent: string) => void;
+  onRename: (node: DocNode) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(depth < 1);
@@ -205,6 +251,10 @@ function Tree({
             ? "text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
             : "text-zinc-400 cursor-default")
         }
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onRename(node);
+        }}
       >
         <FileText className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate">{node.name}</span>
@@ -225,6 +275,10 @@ function Tree({
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1.5 flex-1 min-w-0 font-medium text-left"
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onRename(node);
+          }}
         >
           <ChevronRight
             className={
@@ -262,11 +316,21 @@ function Tree({
           >
             <FolderPlus className="w-3.5 h-3.5 text-amber-600" />
           </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRename(node);
+            }}
+            title="重命名"
+            className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          >
+            <Pencil className="w-3.5 h-3.5 text-zinc-500" />
+          </button>
         </div>
       </div>
       {open && node.children && (
         <div>
-          {node.children.map((c) => (
+          {sortNodes(node.children).map((c) => (
             <Tree
               key={c.path}
               node={c}
@@ -274,6 +338,7 @@ function Tree({
               onOpen={onOpen}
               onNewFile={onNewFile}
               onNewDir={onNewDir}
+              onRename={onRename}
             />
           ))}
         </div>

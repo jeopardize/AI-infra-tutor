@@ -8,7 +8,11 @@ import {
   loadQuestionProgress,
   pushQuizHistory,
   recordQuestionQuizResult,
+  addFavorite,
+  removeFavorite,
+  loadFavorites,
 } from "@/lib/storage";
+import { Star } from "lucide-react";
 import type { QuestionItem } from "@/lib/storage";
 import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
 import {
@@ -95,6 +99,7 @@ export default function HomePage() {
   const [loadError, setLoadError] = useState("");
   const [states, setStates] = useState<Record<string, QAnswerState>>({});
   const [openIds, setOpenIds] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [restored, setRestored] = useState(false);
 
   // 恢复：优先模块级记忆（同一次会话内切页），否则用 localStorage（冷启动/刷新）
@@ -114,6 +119,7 @@ export default function HomePage() {
     setStates(clean);
     setOpenIds((shape.openIds ?? []).filter(Boolean));
     setRestored(true);
+    loadFavorites().then(setFavorites);
   }, []);
 
   // 状态变化即持久化
@@ -209,7 +215,11 @@ export default function HomePage() {
               },
             };
           });
-          recordQuestionQuizResult(q.id, ev.score);
+          recordQuestionQuizResult(
+            q.id,
+            ev.score,
+            (q.question.zh || q.question.en).slice(0, 60),
+          );
           pushQuizHistory({
             questionId: q.id,
             topicId: q.topicId,
@@ -297,6 +307,31 @@ export default function HomePage() {
     [commitStates],
   );
 
+  const toggleFavorite = useCallback(
+    (id: string, label: string) => {
+      const isFav = favorites.has(id);
+      const updater = isFav ? removeFavorite : addFavorite;
+      // 乐观更新
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        if (isFav) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      updater(id, label).then((ok) => {
+        if (!ok) {
+          setFavorites((prev) => {
+            const next = new Set(prev);
+            if (isFav) next.add(id);
+            else next.delete(id);
+            return next;
+          });
+        }
+      });
+    },
+    [favorites],
+  );
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <section className="mb-8">
@@ -339,6 +374,10 @@ export default function HomePage() {
                     open={openIds.includes(q.id)}
                     onToggle={() => toggleOpen(q.id)}
                     state={states[q.id] ?? emptyState()}
+                    favorited={favorites.has(q.id)}
+                    onToggleFavorite={() =>
+                      toggleFavorite(q.id, (q.question.zh || q.question.en).slice(0, 60))
+                    }
                   />
                   {openIds.includes(q.id) && (
                     <div className="md:col-span-2">
@@ -397,11 +436,15 @@ function QuestionCard({
   open,
   onToggle,
   state,
+  favorited,
+  onToggleFavorite,
 }: {
   q: DailyQuestion;
   open: boolean;
   onToggle: () => void;
   state: QAnswerState;
+  favorited: boolean;
+  onToggleFavorite: () => void;
 }) {
   const progress = loadQuestionProgress();
   const p = progress[q.id];
@@ -409,13 +452,25 @@ function QuestionCard({
   const hasResult = !!state.evaluation || state.grading;
 
   return (
-    <button
+    <div
       onClick={onToggle}
-      className={`text-left border rounded-xl p-4 transition bg-white dark:bg-zinc-900 hover:border-blue-400 dark:hover:border-blue-600 focus:outline-none relative ${
+      className={`text-left border rounded-xl p-4 transition bg-white dark:bg-zinc-900 hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer relative ${
         open ? "border-blue-500 ring-2 ring-blue-500/30" : "border-zinc-200 dark:border-zinc-800"
       }`}
     >
-      <div className="flex items-center gap-2 mb-2">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite();
+        }}
+        title={favorited ? "取消收藏（错题本）" : "加入收藏/错题本"}
+        className="absolute top-3 right-3 p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      >
+        <Star
+          className={`w-4 h-4 ${favorited ? "text-amber-400 fill-amber-400" : "text-zinc-300 dark:text-zinc-600"}`}
+        />
+      </button>
+      <div className="flex items-center gap-2 mb-2 pr-6">
         <span
           className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
             isOther
@@ -437,12 +492,13 @@ function QuestionCard({
         {q.question.zh || q.question.en}
       </div>
       <div className="mt-2 text-xs text-zinc-400 flex items-center gap-2">
+        {favorited && <span className="text-amber-500">★ 错题本</span>}
         {q.answer.zh ? "有标准答案" : "暂无标准答案"}
         {state.attempts.length > 0 && (
           <span className="text-blue-500">已答 {state.attempts.length} 次</span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 

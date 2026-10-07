@@ -17,6 +17,23 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const action = new URL(req.url).searchParams.get("action");
+
+  // action=clear-done：清掉全部已处理反馈（总结已沉淀在版本提交记录里）
+  if (action === "clear-done") {
+    const items = await loadFromGit<FeedbackItem[]>("feedback", []);
+    const done = items.filter((it) => it.status === "done");
+    if (done.length === 0) {
+      return Response.json({ ok: true, cleared: 0 });
+    }
+    await saveToGit<FeedbackItem[]>(
+      "feedback",
+      items.filter((it) => it.status !== "done"),
+    );
+    return Response.json({ ok: true, cleared: done.length });
+  }
+
+  // 默认：提交一条新反馈
   let body: { content?: string };
   try {
     body = (await req.json()) as { content?: string };
