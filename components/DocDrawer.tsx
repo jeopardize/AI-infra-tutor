@@ -9,6 +9,7 @@ import {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { remarkCallouts } from "@/lib/markdown/callouts";
 import {
   Check,
   ChevronDown,
@@ -476,7 +477,7 @@ export function DocDrawer({
             ) : (
               <div className="prose-tutor">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkCallouts]}
                   components={buildMarkdownComponents(rewriteAsset)}
                 >
                   {data.content}
