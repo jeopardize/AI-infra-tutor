@@ -5,6 +5,7 @@ import { useT } from "@/lib/i18n/context";
 import { SingleQuestionForm } from "./SingleQuestionForm";
 import { BatchQuestionForm } from "./BatchQuestionForm";
 import { CategoryTree, OTHER_CATEGORY } from "./CategoryTree";
+import { NewFolderButton } from "./NewFolderButton";
 import type { BankCategoryOption } from "./EditQuestionDialog";
 
 interface Props {
@@ -62,6 +63,13 @@ export function AddQuestionsPanel({ categories, onSaved }: Props) {
             countOf={() => 0}
             selected={selectedPath}
             onSelect={setSelectedPath}
+          />
+          <NewFolderButton
+            parentPath={selectedPath !== "data" ? selectedPath : ""}
+            onCreated={(p) => {
+              setSelectedPath(p);
+              onSaved?.();
+            }}
           />
           <p className="mt-2 text-[10px] text-zinc-400">
             将写入 <code className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded break-all">{targetFile}</code>

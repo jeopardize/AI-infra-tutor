@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type DragEvent } from "react";
 import { ChevronDown, ChevronRight, FolderTree } from "lucide-react";
 
 export const OTHER_CATEGORY = "其他";
@@ -12,6 +12,14 @@ export interface TreeCategory {
   label: string;
   file: string;
 }
+
+/** 题目卡片拖拽时放进 dataTransfer 的负载 */
+export interface QuestionDragPayload {
+  id: string;
+  file: string;
+}
+
+export const QUESTION_DRAG_TYPE = "application/x-bank-question";
 
 interface TNode {
   name: string;
@@ -54,24 +62,57 @@ function TreeNodeView({
   depth,
   selected,
   onSelect,
+  onDropQuestion,
 }: {
   node: TNode;
   depth: number;
   selected: string;
   onSelect: (path: string) => void;
+  onDropQuestion?: (drag: QuestionDragPayload, targetPath: string) => void;
 }) {
   const [open, setOpen] = useState(depth < 1);
+  const [dropActive, setDropActive] = useState(false);
   const isSel = selected === node.path;
+  const droppable = !!onDropQuestion;
+
+  function handleDragOver(e: DragEvent) {
+    if (!droppable) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropActive(true);
+  }
+
+  function handleDrop(e: DragEvent) {
+    if (!droppable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDropActive(false);
+    try {
+      const raw = e.dataTransfer.getData(QUESTION_DRAG_TYPE);
+      if (!raw) return;
+      const drag = JSON.parse(raw) as QuestionDragPayload;
+      onDropQuestion(drag, node.path);
+    } catch {
+      /* ignore invalid payload */
+    }
+  }
+
   return (
     <li>
       <div
         className={`flex items-center gap-1 rounded-md px-1.5 py-1 cursor-pointer text-xs ${
           isSel
             ? "bg-blue-600 text-white"
-            : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+            : dropActive
+              ? "bg-emerald-100 dark:bg-emerald-900/40 ring-1 ring-emerald-500 text-emerald-700 dark:text-emerald-300"
+              : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
         }`}
         style={{ paddingLeft: depth * 12 + 6 }}
         onClick={() => onSelect(node.path)}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setDropActive(false)}
+        onDrop={handleDrop}
+        title={droppable ? "拖拽题目到此文件夹可更换分类" : undefined}
       >
         {node.children.length > 0 ? (
           <button
@@ -102,6 +143,7 @@ function TreeNodeView({
               depth={depth + 1}
               selected={selected}
               onSelect={onSelect}
+              onDropQuestion={onDropQuestion}
             />
           ))}
         </ul>
@@ -115,11 +157,13 @@ export function CategoryTree({
   countOf,
   selected,
   onSelect,
+  onDropQuestion,
 }: {
   categories: TreeCategory[];
   countOf: (path: string) => number;
   selected: string;
   onSelect: (path: string) => void;
+  onDropQuestion?: (drag: QuestionDragPayload, targetPath: string) => void;
 }) {
   const tree = useMemo(() => buildTree(categories, countOf), [categories, countOf]);
   const other = categories.find((c) => c.path === OTHER_DIR);
@@ -139,7 +183,14 @@ export function CategoryTree({
       </div>
       <ul>
         {tree.map((n) => (
-          <TreeNodeView key={n.path} node={n} depth={0} selected={selected} onSelect={onSelect} />
+          <TreeNodeView
+            key={n.path}
+            node={n}
+            depth={0}
+            selected={selected}
+            onSelect={onSelect}
+            onDropQuestion={onDropQuestion}
+          />
         ))}
       </ul>
       {other && (

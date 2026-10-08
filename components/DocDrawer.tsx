@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Eye,
+  ListTree,
   Loader2,
   Pencil,
   Save,
@@ -35,6 +44,28 @@ interface WriteResp {
   message?: string;
 }
 
+interface OutlineItem {
+  level: number;
+  text: string;
+  line: number;
+}
+
+/** 从 markdown 源码提取标题大纲（跳过代码块内的 # 行） */
+function parseOutline(md: string): OutlineItem[] {
+  const items: OutlineItem[] = [];
+  let inFence = false;
+  md.split("\n").forEach((line, i) => {
+    if (/^\s{0,3}(```|~~~)/.test(line)) inFence = !inFence;
+    if (inFence) return;
+    const m = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (m) items.push({ level: m[1].length, text: m[2], line: i });
+  });
+  return items;
+}
+
+const OUTLINE_HEIGHT_KEY = "doc-drawer-outline-height";
+const DRAWER_WIDTH_KEY = "doc-drawer-width";
+
 export function DocDrawer({
   docPath,
   onClose,
@@ -57,6 +88,19 @@ export function DocDrawer({
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveMsgKind, setSaveMsgKind] = useState<"ok" | "warn" | "err">("ok");
   const draftRef = useRef<HTMLTextAreaElement>(null);
+
+  // 抽屉宽度（反馈：编辑区可拉宽）
+  const [width, setWidth] = useState<number | null>(null);
+  // 大纲面板：默认展开，高度可上下拖动调整
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [outlineHeight, setOutlineHeight] = useState(170);
+
+  useEffect(() => {
+    const w = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
+    if (Number.isFinite(w) && w >= 420) setWidth(w);
+    const h = Number(localStorage.getItem(OUTLINE_HEIGHT_KEY));
+    if (Number.isFinite(h) && h >= 64 && h <= 420) setOutlineHeight(h);
+  }, []);
 
   // 拉取文档内容
   useEffect(() => {
@@ -188,6 +232,71 @@ export function DocDrawer({
     }, 0);
   }
 
+  // ---------- 拉宽抽屉（左缘拖动） ----------
+  function startWidthResize(e: ReactPointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const fallback =
+      typeof window === "undefined"
+        ? 680
+        : window.innerWidth < 640
+          ? window.innerWidth
+          : window.innerWidth < 1024
+            ? 560
+            : 680;
+    const startW = width ?? fallback;
+    function onMove(ev: globalThis.PointerEvent) {
+      const w = Math.min(
+        window.innerWidth - 24,
+        Math.max(420, startW + (startX - ev.clientX)),
+      );
+      setWidth(w);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setWidth((w) => {
+        if (w) localStorage.setItem(DRAWER_WIDTH_KEY, String(w));
+        return w;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  // ---------- 大纲高度拖动（上下伸缩） ----------
+  function startOutlineResize(e: ReactPointerEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = outlineHeight;
+    function onMove(ev: globalThis.PointerEvent) {
+      const h = Math.min(420, Math.max(64, startH + (ev.clientY - startY)));
+      setOutlineHeight(h);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setOutlineHeight((h) => {
+        localStorage.setItem(OUTLINE_HEIGHT_KEY, String(h));
+        return h;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  function jumpToHeading(h: OutlineItem, index: number) {
+    if (mode === "preview") {
+      const el = document.getElementById(`md-h-${index}`);
+      el?.scrollIntoView({ block: "start", behavior: "smooth" });
+    } else {
+      const ta = draftRef.current;
+      if (!ta) return;
+      const lineH = 24;
+      ta.scrollTop = Math.max(0, h.line * lineH - 40);
+    }
+  }
+
   // 给 react-markdown 用：把相对图片路径改写到 /api/docs/asset
   const baseDir = data?.dir ?? "";
   function rewriteAsset(src: string): string {
@@ -203,172 +312,241 @@ export function DocDrawer({
     return `/api/docs/asset?path=${encodeURIComponent(parts.join("/"))}`;
   }
 
-  return (
-    <>
-      <aside className="fixed top-0 right-0 h-full w-full sm:w-[560px] lg:w-[680px] bg-white dark:bg-zinc-950 z-50 shadow-2xl flex flex-col border-l border-zinc-200 dark:border-zinc-800">
-        <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800">
-          <div className="min-w-0 flex-1">
-            <div className="text-xs text-zinc-500 truncate">
-              {t.docDrawer.headerLabel(data?.dir ?? "")}
-            </div>
-            <div className="font-medium truncate flex items-center gap-1.5">
-              {data?.name ?? docPath}
-              {dirty && (
-                <span className="text-xs text-amber-600">● {t.common.unsaved}</span>
-              )}
-            </div>
-          </div>
+  const outlineSource = mode === "edit" ? draft : data?.content ?? "";
+  const outline = parseOutline(outlineSource);
 
-          {/* 模式切换 / 保存 */}
-          {data && (
-            <div className="flex items-center gap-1">
-              {mode === "edit" ? (
-                <>
-                  <button
-                    onClick={save}
-                    disabled={!dirty || saving}
-                    title="Cmd/Ctrl+S"
-                    className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-700 flex items-center gap-1"
-                  >
-                    {saving ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Save className="w-3.5 h-3.5" />
-                    )}
-                    {t.common.save}
-                  </button>
-                  <button
-                    onClick={() => setMode("preview")}
-                    className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
-                  >
-                    <Eye className="w-3.5 h-3.5" /> {t.common.preview}
-                  </button>
-                </>
-              ) : (
+  return (
+    <aside
+      className="fixed top-0 right-0 h-full w-full sm:w-[560px] lg:w-[680px] bg-white dark:bg-zinc-950 z-50 shadow-2xl flex flex-col border-l border-zinc-200 dark:border-zinc-800"
+      style={width ? { width } : undefined}
+    >
+      {/* 左缘拉宽手柄 */}
+      <div
+        onPointerDown={startWidthResize}
+        className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize hover:bg-blue-500/30 z-20"
+        title="拖动调整宽度"
+      />
+
+      <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-zinc-500 truncate">
+            {t.docDrawer.headerLabel(data?.dir ?? "")}
+          </div>
+          <div className="font-medium truncate flex items-center gap-1.5">
+            {data?.name ?? docPath}
+            {dirty && (
+              <span className="text-xs text-amber-600">● {t.common.unsaved}</span>
+            )}
+          </div>
+        </div>
+
+        {/* 模式切换 / 保存 */}
+        {data && (
+          <div className="flex items-center gap-1">
+            {mode === "edit" ? (
+              <>
                 <button
-                  onClick={() => setMode("edit")}
+                  onClick={save}
+                  disabled={!dirty || saving}
+                  title="Cmd/Ctrl+S"
+                  className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-700 flex items-center gap-1"
+                >
+                  {saving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  {t.common.save}
+                </button>
+                <button
+                  onClick={() => setMode("preview")}
                   className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
                 >
-                  <Pencil className="w-3.5 h-3.5" /> {t.common.edit}
+                  <Eye className="w-3.5 h-3.5" /> {t.common.preview}
                 </button>
-              )}
-            </div>
-          )}
-          <button
-            onClick={() => {
-              if (dirty && !confirm(t.docDrawer.confirmCloseUnsaved)) return;
-              onClose();
-            }}
-            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={t.common.close}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </header>
-
-        {/* 顶部消息条（保存结果） */}
-        {saveMsg && (
-          <div className="px-4 py-2 text-xs flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-            <span
-              className={
-                saveMsgKind === "ok"
-                  ? "text-emerald-600 flex items-center gap-1"
-                  : "text-rose-600"
-              }
-            >
-              {saveMsgKind === "ok" && <Check className="w-3 h-3" />}
-              {saveMsg}
-            </span>
-            {saveMsgKind === "warn" && (
+              </>
+            ) : (
               <button
-                onClick={reload}
-                className="text-xs text-blue-600 hover:underline"
+                onClick={() => setMode("edit")}
+                className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
               >
-                {t.docDrawer.reload}
+                <Pencil className="w-3.5 h-3.5" /> {t.common.edit}
               </button>
             )}
           </div>
         )}
+        <button
+          onClick={() => {
+            if (dirty && !confirm(t.docDrawer.confirmCloseUnsaved)) return;
+            onClose();
+          }}
+          className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          aria-label={t.common.close}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </header>
 
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="flex items-center gap-2 text-zinc-500 p-5">
-              <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.loading}
-            </div>
-          )}
-          {err && (
-            <div className="text-rose-600 text-sm p-5">
-              {t.docDrawer.readFailed(err)}
-            </div>
-          )}
-
-          {data && mode === "preview" && (
-            <div className="p-5">
-              {data.content.trim() === "" ? (
-                <div className="text-zinc-400 italic">
-                  {t.docDrawer.emptyContent}
-                </div>
-              ) : (
-                <div className="prose-tutor">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      img: ({ src, alt, ...rest }) => (
-                        <img
-                          src={
-                            typeof src === "string"
-                              ? rewriteAsset(src)
-                              : undefined
-                          }
-                          alt={alt ?? ""}
-                          style={{ maxWidth: "100%", height: "auto" }}
-                          {...rest}
-                        />
-                      ),
-                      a: ({ href, children, ...rest }) => (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          {...rest}
-                        >
-                          {children}
-                          <ExternalLink className="inline w-3 h-3 ml-0.5 align-baseline" />
-                        </a>
-                      ),
-                    }}
-                  >
-                    {data.content}
-                  </ReactMarkdown>
-                </div>
-              )}
-            </div>
-          )}
-
-          {data && mode === "edit" && (
-            <textarea
-              ref={draftRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              spellCheck={false}
-              className="w-full h-full min-h-[300px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
-              placeholder=""
-            />
+      {/* 顶部消息条（保存结果） */}
+      {saveMsg && (
+        <div className="px-4 py-2 text-xs flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+          <span
+            className={
+              saveMsgKind === "ok"
+                ? "text-emerald-600 flex items-center gap-1"
+                : "text-rose-600"
+            }
+          >
+            {saveMsgKind === "ok" && <Check className="w-3 h-3" />}
+            {saveMsg}
+          </span>
+          {saveMsgKind === "warn" && (
+            <button
+              onClick={reload}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              {t.docDrawer.reload}
+            </button>
           )}
         </div>
+      )}
 
-        {data && (
-          <footer className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-200 dark:border-zinc-800 flex justify-between">
-            <span>
-              {Math.round((data.bytes ?? 0) / 1024)} KB
-              {mode === "edit" && (
-                <span className="ml-3">{t.docDrawer.charsCount(draft.length)}</span>
-              )}
-            </span>
-            <span>{t.docDrawer.updatedAt(new Date(data.mtime).toLocaleString())}</span>
-          </footer>
+      {/* 文档大纲：置于文档最上方，可收缩展开，高度可上下拖动调整 */}
+      {outline.length > 0 && (
+        <div
+          className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 relative shrink-0"
+          style={outlineOpen ? { height: outlineHeight } : undefined}
+        >
+          <button
+            onClick={() => setOutlineOpen((v) => !v)}
+            className="w-full flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            <ListTree className="w-3.5 h-3.5" />
+            大纲（{outline.length}）
+            {outlineOpen ? (
+              <ChevronUp className="w-3 h-3 ml-auto" />
+            ) : (
+              <ChevronDown className="w-3 h-3 ml-auto" />
+            )}
+          </button>
+          {outlineOpen && (
+            <>
+              <ul className="h-[calc(100%-30px)] overflow-y-auto px-4 pb-2">
+                {outline.map((h, i) => (
+                  <li key={i}>
+                    <button
+                      onClick={() => jumpToHeading(h, i)}
+                      className="block w-full text-left text-xs text-zinc-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 truncate py-0.5"
+                      style={{ paddingLeft: (h.level - 1) * 14 }}
+                      title={h.text}
+                    >
+                      {h.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div
+                onPointerDown={startOutlineResize}
+                className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-blue-500/30"
+                title="上下拖动调整大纲区域大小"
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="flex items-center gap-2 text-zinc-500 p-5">
+            <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.loading}
+          </div>
         )}
-      </aside>
-    </>
+        {err && (
+          <div className="text-rose-600 text-sm p-5">
+            {t.docDrawer.readFailed(err)}
+          </div>
+        )}
+
+        {data && mode === "preview" && (
+          <div className="p-5">
+            {data.content.trim() === "" ? (
+              <div className="text-zinc-400 italic">
+                {t.docDrawer.emptyContent}
+              </div>
+            ) : (
+              <div className="prose-tutor">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={buildMarkdownComponents(rewriteAsset)}
+                >
+                  {data.content}
+                </ReactMarkdown>
+              </div>
+            )}
+          </div>
+        )}
+
+        {data && mode === "edit" && (
+          <textarea
+            ref={draftRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            spellCheck={false}
+            className="w-full h-full min-h-[300px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
+            placeholder=""
+          />
+        )}
+      </div>
+
+      {data && (
+        <footer className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-200 dark:border-zinc-800 flex justify-between">
+          <span>
+            {Math.round((data.bytes ?? 0) / 1024)} KB
+            {mode === "edit" && (
+              <span className="ml-3">{t.docDrawer.charsCount(draft.length)}</span>
+            )}
+          </span>
+          <span>{t.docDrawer.updatedAt(new Date(data.mtime).toLocaleString())}</span>
+        </footer>
+      )}
+    </aside>
   );
+}
+
+/** 构建渲染组件：给每个标题按出现顺序加 md-h-N 锚点（与大纲一一对应） */
+function buildMarkdownComponents(
+  rewriteAsset: (src: string) => string,
+): Components {
+  let headingIdx = -1;
+  const heading = (Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") =>
+    function Heading({ children }: { children?: React.ReactNode }) {
+      headingIdx += 1;
+      return (
+        <Tag id={`md-h-${headingIdx}`} className="scroll-mt-2">
+          {children}
+        </Tag>
+      );
+    };
+  return {
+    h1: heading("h1"),
+    h2: heading("h2"),
+    h3: heading("h3"),
+    h4: heading("h4"),
+    h5: heading("h5"),
+    h6: heading("h6"),
+    img: ({ src, alt, ...rest }) => (
+      <img
+        src={typeof src === "string" ? rewriteAsset(src) : undefined}
+        alt={alt ?? ""}
+        style={{ maxWidth: "100%", height: "auto" }}
+        {...rest}
+      />
+    ),
+    a: ({ href, children, ...rest }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+        {children}
+        <ExternalLink className="inline w-3 h-3 ml-0.5 align-baseline" />
+      </a>
+    ),
+  };
 }

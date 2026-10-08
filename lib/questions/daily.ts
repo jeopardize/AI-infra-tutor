@@ -2,7 +2,7 @@ import { saveToGit, loadFromGit } from "@/lib/data/repo-storage";
 import type { QuestionItem } from "@/lib/storage";
 import type { ServerQuestionProgress } from "@/lib/notify/progress";
 
-/** 每日推送/展示的题目数量 */
+/** 每日推送/展示的题目数量（企业微信 8 点推送与网页总览共用） */
 export const PUSH_COUNT = 10;
 
 /**
@@ -20,7 +20,10 @@ export function localDateStr(d = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** 优先级：gap > unknown > learning > mastered，越久未复习越靠前 */
+/**
+ * 优先级：gap > unknown > learning > mastered，越久未复习越靠前。
+ * 叠加少量随机抖动，避免分数接近的题目每天以固定顺序霸榜。
+ */
 export function pickDailyQuestions(
   questions: QuestionItem[],
   progress: ServerQuestionProgress,
@@ -36,9 +39,11 @@ export function pickDailyQuestions(
     );
     return w * 10 - stale / 3;
   };
-  return [...questions]
-    .sort((a, b) => score(a) - score(b))
-    .slice(0, PUSH_COUNT);
+  return questions
+    .map((q) => ({ q, s: score(q) + Math.random() * 0.8 }))
+    .sort((a, b) => a.s - b.s)
+    .slice(0, PUSH_COUNT)
+    .map((x) => x.q);
 }
 
 export async function ensureDailySet(
@@ -50,10 +55,16 @@ export async function ensureDailySet(
   if (existing && existing.date === today && existing.questions?.length) {
     return existing;
   }
+  // 轮换：把上一天集合里的题目往后排，保证每日题目有更新
+  const prevIds = new Set(
+    existing && existing.date !== today ? (existing.questions ?? []).map((q) => q.id) : [],
+  );
+  const pool = questions.filter((q) => !prevIds.has(q.id));
+  const source = pool.length >= PUSH_COUNT ? pool : questions;
   const set: DailySet = {
     date: today,
     summary: "",
-    questions: pickDailyQuestions(questions, progress),
+    questions: pickDailyQuestions(source, progress),
   };
   await saveToGit("daily-questions", set);
   return set;

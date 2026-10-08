@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useT } from "@/lib/i18n/context";
 import type { QuestionItem } from "@/lib/storage";
+import { Markdown } from "@/components/Markdown";
 import { EditQuestionDialog, type BankCategoryOption } from "./EditQuestionDialog";
-import { CategoryTree } from "./CategoryTree";
+import { CategoryTree, QUESTION_DRAG_TYPE, type QuestionDragPayload } from "./CategoryTree";
+import { NewFolderButton } from "./NewFolderButton";
 import { exportAsJson, exportAsMarkdown } from "./exportUtils";
-import { Download, Search } from "lucide-react";
+import { Download, GripVertical, Search } from "lucide-react";
 
 export type BankQuestion = QuestionItem & { file?: string };
 
@@ -24,9 +26,24 @@ interface EditableRowProps {
   categories: BankCategoryOption[];
   onEdit: () => void;
   onDelete: () => void;
+  onDragStart?: (e: DragEvent) => void;
+  onDragEnd?: () => void;
+  onDragOverCard?: (e: DragEvent) => void;
+  onDropCard?: (e: DragEvent) => void;
+  dropTarget?: boolean;
 }
 
-function QuestionCard({ item, categories, onEdit, onDelete }: EditableRowProps) {
+function QuestionCard({
+  item,
+  categories,
+  onEdit,
+  onDelete,
+  onDragStart,
+  onDragEnd,
+  onDragOverCard,
+  onDropCard,
+  dropTarget,
+}: EditableRowProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -38,11 +55,25 @@ function QuestionCard({ item, categories, onEdit, onDelete }: EditableRowProps) 
   }
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 max-w-full overflow-hidden">
+    <div
+      className={`border rounded-lg bg-white dark:bg-zinc-900 max-w-full overflow-hidden ${
+        dropTarget
+          ? "border-emerald-500 ring-1 ring-emerald-500"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+      draggable={!!onDragStart}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOverCard}
+      onDrop={onDropCard}
+    >
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition rounded-lg min-w-0"
       >
+        {onDragStart && (
+          <GripVertical className="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 shrink-0 cursor-grab" />
+        )}
         <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 font-medium ${
           item.category === OTHER_CATEGORY
             ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
@@ -72,19 +103,31 @@ function QuestionCard({ item, categories, onEdit, onDelete }: EditableRowProps) 
                 {copied ? "✓" : "⧉"}
               </button>
             </div>
-            <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden">{item.question.zh || "—"}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden prose-tutor">
+              {item.question.zh ? <Markdown>{item.question.zh}</Markdown> : "—"}
+            </div>
           </div>
           <div className="min-w-0">
             <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.questionEn}</div>
-            <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words overflow-hidden">{item.question.en || "—"}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden prose-tutor">
+              {item.question.en ? <Markdown>{item.question.en}</Markdown> : "—"}
+            </div>
           </div>
           <div className="min-w-0">
             <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.answerZh}</div>
-            <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words overflow-hidden">{item.answer.zh || "（暂无，可在答题页提交后点“设为标准答案”生成）"}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden prose-tutor">
+              {item.answer.zh ? (
+                <Markdown>{item.answer.zh}</Markdown>
+              ) : (
+                "（暂无，可在答题页提交后点“设为标准答案”生成）"
+              )}
+            </div>
           </div>
           <div className="min-w-0">
             <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.answerEn}</div>
-            <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words overflow-hidden">{item.answer.en || "—"}</div>
+            <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden prose-tutor">
+              {item.answer.en ? <Markdown>{item.answer.en}</Markdown> : "—"}
+            </div>
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -117,6 +160,9 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
   const [searchText, setSearchText] = useState("");
   const [editing, setEditing] = useState<BankQuestion | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropCardId, setDropCardId] = useState<string | null>(null);
+  const [busyMsg, setBusyMsg] = useState("");
 
   const countOf = useCallback(
     (path: string): number => {
@@ -162,6 +208,83 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
     }
   }
 
+  /** 拖拽题目到文件夹树上：更换分类（移动到目标文件夹的 question.md） */
+  async function handleDropQuestion(drag: QuestionDragPayload, targetPath: string) {
+    const item = items.find((q) => q.id === drag.id);
+    if (!item) return;
+    const targetFile = targetPath === "data" ? "data/other_question.md" : `${targetPath}/question.md`;
+    if (item.file === targetFile) return;
+    setBusyMsg("正在移动题目…");
+    try {
+      const res = await fetch("/api/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          createdAt: item.createdAt,
+          topicId: item.topicId,
+          category: targetPath,
+          prevFile: item.file,
+          question: item.question,
+          answer: item.answer,
+        }),
+      });
+      if (res.ok) onChange();
+      else alert("移动失败");
+    } finally {
+      setBusyMsg("");
+    }
+  }
+
+  /** 拖拽题目到另一张卡片上：同文件内调整顺序 */
+  function handleCardDragOver(e: DragEvent, target: BankQuestion) {
+    if (!dragId || dragId === target.id) return;
+    const dragged = items.find((q) => q.id === dragId);
+    if (!dragged || !target.file || dragged.file !== target.file) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropCardId(target.id);
+  }
+
+  async function handleCardDrop(e: DragEvent, target: BankQuestion) {
+    e.preventDefault();
+    setDropCardId(null);
+    const dragged = items.find((q) => q.id === dragId);
+    const dragFile = dragId ? items.find((q) => q.id === dragId)?.file : undefined;
+    setDragId(null);
+    if (!dragged || !dragFile || !target.file || dragFile !== target.file || dragged.id === target.id) return;
+
+    const full = items.filter((q) => q.file === target.file);
+    const without = full.filter((q) => q.id !== dragged.id);
+    const idx = without.findIndex((q) => q.id === target.id);
+    without.splice(idx >= 0 ? idx : without.length, 0, dragged);
+    const orderedIds = without.map((q) => q.id);
+
+    setBusyMsg("正在保存排序…");
+    try {
+      const res = await fetch("/api/questions/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: target.file, orderedIds }),
+      });
+      if (res.ok) onChange();
+      else alert("排序保存失败");
+    } finally {
+      setBusyMsg("");
+    }
+  }
+
+  function makeDragStart(item: BankQuestion) {
+    return (e: DragEvent) => {
+      e.dataTransfer.setData(
+        QUESTION_DRAG_TYPE,
+        JSON.stringify({ id: item.id, file: item.file ?? "" } satisfies QuestionDragPayload),
+      );
+      e.dataTransfer.effectAllowed = "move";
+      setDragId(item.id);
+    };
+  }
+
   function handleExportJson() {
     exportAsJson(filtered);
   }
@@ -179,17 +302,24 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
         分类严格对应笔记库文件夹：每类题目存放在对应文件夹的 <code className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded">question.md</code> 里；
         无法确认分类的题目放在 <code className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded">data/other_question.md</code>
         （显示为「其他」{otherCount > 0 ? `，当前 ${otherCount} 题` : ""}）。
-        在网页中编辑题目并修改分类时，会自动把它移动到所属文件夹的 question.md 下。
+        可拖拽题目卡片到左侧文件夹更换分类，拖到另一张卡片上调整顺序；删除立即生效并实时刷新。
       </div>
 
       {/* 分类：文件夹树 */}
       <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-start">
-        <CategoryTree
-          categories={categories}
-          countOf={countOf}
-          selected={filterPath}
-          onSelect={(p) => setFilterPath((prev) => (prev === p ? "" : p))}
-        />
+        <div>
+          <CategoryTree
+            categories={categories}
+            countOf={countOf}
+            selected={filterPath}
+            onSelect={(p) => setFilterPath((prev) => (prev === p ? "" : p))}
+            onDropQuestion={handleDropQuestion}
+          />
+          <NewFolderButton
+            parentPath={filterPath !== "data" ? filterPath : ""}
+            onCreated={() => onChange()}
+          />
+        </div>
 
         <div className="space-y-3 min-w-0">
           {/* Search + export */}
@@ -242,6 +372,14 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
                   categories={categories}
                   onEdit={() => setEditing(q)}
                   onDelete={() => handleDelete(q)}
+                  onDragStart={makeDragStart(q)}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDropCardId(null);
+                  }}
+                  onDragOverCard={(e) => handleCardDragOver(e, q)}
+                  onDropCard={(e) => void handleCardDrop(e, q)}
+                  dropTarget={dropCardId === q.id}
                 />
               ))}
             </div>
@@ -261,9 +399,9 @@ export function BrowseQuestionsPanel({ refreshKey, categories, items, onChange }
         />
       )}
 
-      {deletingId && (
+      {(deletingId || busyMsg) && (
         <div className="fixed bottom-4 right-4 text-xs text-zinc-500 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 shadow">
-          删除中… {deletingId}
+          {busyMsg || `删除中… ${deletingId}`}
         </div>
       )}
     </div>

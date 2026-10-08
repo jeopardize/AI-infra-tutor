@@ -54,8 +54,8 @@ async function walk(absDir: string, relDir: string): Promise<DocNode> {
     const abs = path.join(absDir, e.name);
     if (e.isDirectory()) {
       const sub = await walk(abs, rel);
-      // 跳过完全没有可见文件的目录（避免一大堆空文件夹）
-      if ((sub.children?.length ?? 0) > 0) children.push(sub);
+      // 保留空目录：用户新建的文件夹需要立即出现在树/题库分类里
+      children.push(sub);
     } else if (e.isFile()) {
       children.push({
         name: e.name,

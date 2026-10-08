@@ -3,7 +3,7 @@
 # 优先调用本地 Next 服务的 HTTP API；服务不可用时退出码非 0。
 set -u
 
-HOST="${DAILY_PUSH_HOST:-http://127.0.0.1:3000}"
+HOST="${DAILY_PUSH_HOST:-http://127.0.0.1:8001}"
 LOG="${DAILY_PUSH_LOG:-$HOME/logs/daily-push.log}"
 mkdir -p "$(dirname "$LOG")"
 

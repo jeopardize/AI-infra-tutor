@@ -85,7 +85,7 @@ export function AnswerResult({
               {[...attempts].reverse().map((a, i) => (
                 <div key={i} className="rounded-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3">
                   <div className="text-[10px] text-zinc-400 mb-1">第 {attempts.length - i} 次作答</div>
-                  <div className="text-sm whitespace-pre-wrap break-words">{a}</div>
+                  <div className="text-sm prose-tutor break-words"><Markdown>{a}</Markdown></div>
                 </div>
               ))}
             </div>

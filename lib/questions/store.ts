@@ -330,3 +330,28 @@ export async function deleteBankQuestion(id: string, file?: string): Promise<boo
   if (!found) return false;
   return removeFromFile(found.file, id);
 }
+
+/**
+ * 调整某个 question.md 内题目的顺序（网页端拖动排序）。
+ * orderedIds 是期望的完整顺序；未出现在其中的题目按原相对顺序追加到末尾。
+ */
+export async function reorderQuestionFile(
+  file: string,
+  orderedIds: string[],
+): Promise<boolean> {
+  await syncPullNotes();
+  const snap = await readFileSnapshot(file);
+  if (snap.items.length === 0) return false;
+  const rank = new Map<string, number>();
+  orderedIds.forEach((id, i) => {
+    if (!rank.has(id)) rank.set(id, i);
+  });
+  const known = snap.items.filter((q) => rank.has(q.id));
+  const rest = snap.items.filter((q) => !rank.has(q.id));
+  known.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+  const next = [...known, ...rest];
+  if (next.every((q, i) => q.id === snap.items[i].id)) return true;
+  await writeFileSnapshot(file, snap, next);
+  await syncPushNotes(`questions: reorder ${file} (${next.length} items)`);
+  return true;
+}
