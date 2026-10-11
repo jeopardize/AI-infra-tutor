@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.1.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,22 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.1.1",
+    date: "2026-10-11",
+    items: [
+      "feedback: 5条意见——大纲字体与正文一致；答题换行(remark-breaks)；作答支持字色/高亮批注(保存标准答案保留格式)；light/dark主题切换+反馈页版本更新日志；每周日05:00自动升级(update.sh: 先迁移数据+同步git仓库再重启)；新增数据迁移机制(instrumentation启动自动迁移+/api/admin/migrate)；附笔记库GitHub拉取按钮",
+      "feat: markdown 支持 > [!important] 红色/ [!Note] 蓝色 callout 提示块（remark 插件剥除标记+样式）",
+      "feedback: 反馈已处理标记走 git 数据仓库(修复刷新回退)；笔记库支持拖动文件/文件夹到目标文件夹(新增 /api/docs/move)",
+      "feedback: 修复高频推送(脚本无执行权限默认端口8001)+每日题目轮换去重；题库拖拽换分类/文件内排序+页内新建文件夹(空目录可见)；markdown题卡渲染；笔记大纲(可收缩可上下伸缩)+抽屉可拉宽",
+      "feedback: 题库移除所属主题（Topic）分类指标，仅保留笔记库文件夹分类",
+      "feedback: 5条意见——已处理反馈可一键清除；笔记库文件夹排序(序号优先)与重命名；新增题界面改文件夹树选分类(默认其他)；新增收藏错题本(<60分自动收藏+手动收藏按钮)",
+      "fix: 每日题目答题状态切页清空——改为模块级记忆+统一提交入口，批改结果异步完成即写入，跨页面/刷新恢复",
+      "feedback: 每日题目卡片式展开答题+后台批改+跨页面状态保留；题库分类改为文件夹树；推送改为8点；版本发布改为周日",
+      "feedback: 总览导航改为每日题目；知识地图改为按笔记库分类展示题库题目掌握度",
+      "feat: 答题历史服务端持久化（git 仓库 + 半年自动清理）；简历改为本地数据目录存储、不再推送 git",
+    ],
+  },
   {
     version: "1.1.0",
     date: "2026-10-11",
