@@ -14,6 +14,8 @@ import {
 import { KnowledgeMap } from "@/components/KnowledgeMap";
 import { Markdown } from "@/components/Markdown";
 import { AnswerResult } from "@/components/quiz/AnswerResult";
+import { RichAnswerEditor } from "@/components/RichAnswerEditor";
+import { stripRichText } from "@/lib/markdown/richtext";
 import { useLang } from "@/lib/i18n/context";
 import {
   loadProgress,
@@ -134,7 +136,10 @@ function QuizInner() {
   }
 
   async function submitAnswer() {
-    if ((!pickedCp && !pickedQuestion) || !question || !answer.trim() || evaluating) return;
+    if ((!pickedCp && !pickedQuestion) || !question || evaluating) return;
+    // 发给 AI / 存作答历史时剥掉批注富文本标记（只保留换行）；attempts 保留富文本以便自我批注
+    const plain = stripRichText(answer);
+    if (!plain.trim()) return;
     setEvaluating(true);
     setEvaluation(null);
     try {
@@ -146,7 +151,7 @@ function QuizInner() {
           body: JSON.stringify({
             checkpointId: `bank-${pickedQuestion.id}`,
             question,
-            answer,
+            answer: plain,
             language: lang,
             referenceAnswer: lang === "en" && pickedQuestion.answer.en
               ? pickedQuestion.answer.en
@@ -168,7 +173,7 @@ function QuizInner() {
           category: pickedQuestion.category,
           source: "bank",
           question,
-          answer,
+          answer: plain,
           evaluation: data,
           at: Date.now(),
         });
@@ -179,7 +184,7 @@ function QuizInner() {
           body: JSON.stringify({
             checkpointId: pickedCp,
             question,
-            answer,
+            answer: plain,
             language: lang,
           }),
         });
@@ -195,7 +200,7 @@ function QuizInner() {
           topicId: info?.topic.id,
           source: "checkpoint",
           question,
-          answer,
+          answer: plain,
           evaluation: data,
           at: Date.now(),
         });
@@ -358,16 +363,16 @@ function QuizInner() {
           {/* 答题区 */}
           {question && !loadingQ && (
             <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 p-4">
-              <textarea
+              <RichAnswerEditor
                 value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
+                onChange={setAnswer}
                 placeholder={t.quiz.answerPlaceholder}
-                className="w-full min-h-[140px] p-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm outline-none focus:border-blue-500"
+                minHeight={140}
               />
               <div className="mt-2 flex justify-end">
                 <button
                   onClick={submitAnswer}
-                  disabled={evaluating || !answer.trim()}
+                  disabled={evaluating || !stripRichText(answer).trim()}
                   className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"
                 >
                   {evaluating ? (
@@ -403,6 +408,17 @@ function QuizInner() {
                 savingStandard={savingStandard}
                 savedStandard={savedStandard}
                 onSaveStandard={pickedQuestion ? saveMyAnswerAsStandard : undefined}
+                onUpdateLatest={
+                  pickedQuestion
+                    ? (html) =>
+                        setAttempts((prev) => {
+                          if (prev.length === 0) return prev;
+                          const next = [...prev];
+                          next[next.length - 1] = html;
+                          return next;
+                        })
+                    : undefined
+                }
                 onRetry={() => setEvaluation(null)}
               />
             )}

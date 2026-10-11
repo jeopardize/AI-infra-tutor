@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { QB_GIT_DIR, dataRepoPath, localCachePath } from "./repo-paths";
 
 /**
  * 题库 GitHub 持久化存储。
@@ -20,8 +21,6 @@ import { spawn } from "node:child_process";
 
 const DEFAULT_REMOTE = "https://github.com/jeopardize/ai_infra_knowlege.git";
 
-export const QB_GIT_DIR = "question-bank";
-
 /** 含个人隐私、不推送到 git 仓库的 key：只存本地数据目录 */
 const LOCAL_ONLY_KEYS = new Set(["resume"]);
 
@@ -29,33 +28,9 @@ function isLocalOnly(key: string): boolean {
   return LOCAL_ONLY_KEYS.has(key);
 }
 
-function dataRepoPath(): string {
-  const envPath = process.env.DATA_REPO_PATH;
-  if (envPath) {
-    return envPath.startsWith("~")
-      ? path.join(process.env.HOME ?? "", envPath.slice(1))
-      : envPath;
-  }
-  return path.join(process.env.HOME ?? os_homedir(), "apps", "data");
-}
-
-function os_homedir(): string {
-  return process.env.HOME || "";
-}
-
 function gitFilePath(key: string): string {
   const safe = key.replace(/[^a-zA-Z0-9_-]/g, "");
   return path.join(dataRepoPath(), QB_GIT_DIR, `${safe}.json`);
-}
-
-function localCachePath(key: string): string {
-  const safe = key.replace(/[^a-zA-Z0-9_-]/g, "");
-  const dir = process.env.DATA_DIR
-    ? (process.env.DATA_DIR.startsWith("~")
-        ? path.join(process.env.HOME ?? os_homedir(), process.env.DATA_DIR.slice(1))
-        : process.env.DATA_DIR)
-    : path.join(os_homedir(), "Documents", "ai-infra-tutor-data");
-  return path.join(dir, `${safe}.json`);
 }
 
 function git(cwd: string, args: string[]): Promise<string> {

@@ -49,6 +49,9 @@ export interface Dict {
     count: (n: number, done: number) => string;
     deleteConfirm: string;
     note: string;
+    changelogTitle: string;
+    currentVersion: string;
+    changelogEmpty: string;
   };
 
   // -------- dashboard --------
@@ -369,6 +372,9 @@ const zh: Dict = {
     count: (n, done) => `共 ${n} 条，已处理 ${done}`,
     deleteConfirm: "确定删除这条反馈吗？",
     note: "已处理的反馈会在每周日自动润色代码后归档",
+    changelogTitle: "版本更新日志",
+    currentVersion: "当前版本",
+    changelogEmpty: "暂无版本记录",
   },
   dashboard: {
     welcomeTitle: "欢迎，开始你的 AI Infra 学习之旅",
@@ -673,6 +679,9 @@ const en: Dict = {
     count: (n, done) => `${n} total, ${done} done`,
     deleteConfirm: "Delete this feedback?",
     note: "Processed items are auto-archived after Friday code polishing",
+    changelogTitle: "Version Changelog",
+    currentVersion: "Current version",
+    changelogEmpty: "No versions yet",
   },
   dashboard: {
     welcomeTitle: "Welcome — start your AI Infra learning journey",

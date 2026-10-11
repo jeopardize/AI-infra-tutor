@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: 变体改为跟随 <html> 上的 .dark class（主题手动切换用），而非仅系统偏好 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f1f3f4;
   --foreground: #202124;
@@ -15,16 +18,14 @@
   --color-foreground: var(--foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #202124;
-    --foreground: #e8eaed;
-    --surface: #292a2d;
-    --border: #3c4043;
-    --text-secondary: #9aa0a6;
-    --primary: #8ab4f8;
-    --primary-hover: #aecbfa;
-  }
+.dark {
+  --background: #202124;
+  --foreground: #e8eaed;
+  --surface: #292a2d;
+  --border: #3c4043;
+  --text-secondary: #9aa0a6;
+  --primary: #8ab4f8;
+  --primary-hover: #aecbfa;
 }
 
 body {
@@ -113,19 +114,17 @@ body {
   content: "Note";
   color: #2563eb;
 }
-@media (prefers-color-scheme: dark) {
-  .prose-tutor blockquote.callout-important {
-    background: rgba(239, 68, 68, 0.14);
-  }
-  .prose-tutor blockquote.callout-important > p:first-child::before {
-    color: #f87171;
-  }
-  .prose-tutor blockquote.callout-note {
-    background: rgba(59, 130, 246, 0.14);
-  }
-  .prose-tutor blockquote.callout-note > p:first-child::before {
-    color: #93c5fd;
-  }
+.dark .prose-tutor blockquote.callout-important {
+  background: rgba(239, 68, 68, 0.14);
+}
+.dark .prose-tutor blockquote.callout-important > p:first-child::before {
+  color: #f87171;
+}
+.dark .prose-tutor blockquote.callout-note {
+  background: rgba(59, 130, 246, 0.14);
+}
+.dark .prose-tutor blockquote.callout-note > p:first-child::before {
+  color: #93c5fd;
 }.prose-tutor strong { font-weight: 600; }
 .prose-tutor a {
   color: #1a73e8;
@@ -144,6 +143,23 @@ body {
   text-align: left;
 }
 .prose-tutor th { font-weight: 600; }
+
+/* 答题富文本编辑器（contentEditable）占位符 */
+.rich-answer.is-empty::before {
+  content: attr(data-placeholder);
+  color: #a1a1aa;
+  pointer-events: none;
+  display: block;
+  min-height: 1.5em;
+}
+/* 富文本批注中 mark 的默认配色（无 inline style 时） */
+.rich-answer mark,
+.prose-tutor mark {
+  background-color: #fde047;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.15em;
+}
 
 /* line-clamp helpers */
 .line-clamp-2 {

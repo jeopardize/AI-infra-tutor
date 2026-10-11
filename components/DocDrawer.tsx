@@ -437,7 +437,7 @@ export function DocDrawer({
                   <li key={i}>
                     <button
                       onClick={() => jumpToHeading(h, i)}
-                      className="block w-full text-left text-xs text-zinc-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 truncate py-0.5"
+                      className="block w-full text-left text-[0.9rem] leading-snug text-zinc-600 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 truncate py-0.5"
                       style={{ paddingLeft: (h.level - 1) * 14 }}
                       title={h.text}
                     >

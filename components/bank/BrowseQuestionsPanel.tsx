@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react
 import { useT } from "@/lib/i18n/context";
 import type { QuestionItem } from "@/lib/storage";
 import { Markdown } from "@/components/Markdown";
+import { AnswerBody } from "@/components/AnswerBody";
 import { EditQuestionDialog, type BankCategoryOption } from "./EditQuestionDialog";
 import { CategoryTree, QUESTION_DRAG_TYPE, type QuestionDragPayload } from "./CategoryTree";
 import { NewFolderButton } from "./NewFolderButton";
@@ -117,7 +118,7 @@ function QuestionCard({
             <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.answerZh}</div>
             <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden prose-tutor">
               {item.answer.zh ? (
-                <Markdown>{item.answer.zh}</Markdown>
+                <AnswerBody text={item.answer.zh} />
               ) : (
                 "（暂无，可在答题页提交后点“设为标准答案”生成）"
               )}
@@ -126,7 +127,7 @@ function QuestionCard({
           <div className="min-w-0">
             <div className="text-xs font-medium text-zinc-500 mb-1">{t.bank.answerEn}</div>
             <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words overflow-hidden prose-tutor">
-              {item.answer.en ? <Markdown>{item.answer.en}</Markdown> : "—"}
+              {item.answer.en ? <AnswerBody text={item.answer.en} /> : "—"}
             </div>
           </div>
 

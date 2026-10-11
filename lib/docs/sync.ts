@@ -59,6 +59,49 @@ export async function syncPullNotes(): Promise<void> {
   }
 }
 
+export interface ForcePullResult {
+  /** ff：fast-forward 合并成功；reset：本地与远端分叉，已强制重置到远端；unchanged：无需变更/离线 */
+  mode: "ff" | "reset" | "unchanged";
+  detail?: string;
+}
+
+/** 用户主动触发的强制拉取：GitHub 远端为准。
+ *  先 fetch，再尝试 ff 合并；本地已分叉（本地领先提交或历史不一致）时
+ *  reset --hard 到远端并如实告知（之前未 push 成功的本地提交会丢失）。 */
+export async function forcePullNotes(): Promise<ForcePullResult> {
+  const root = notesRepoRoot();
+  if (!(await isRepo(root))) {
+    return { mode: "unchanged", detail: "笔记库目录不是 git 仓库" };
+  }
+  try {
+    await git(root, ["fetch", "origin"]);
+  } catch (err) {
+    return { mode: "unchanged", detail: `fetch 失败（网络？）：${(err as Error).message}` };
+  }
+  const local = await git(root, ["rev-parse", "HEAD"]).catch(() => "");
+  const remote = await git(root, ["rev-parse", "origin/HEAD"]).catch(() => "");
+  if (!remote) return { mode: "unchanged", detail: "无法解析远端 HEAD" };
+  if (local === remote) return { mode: "unchanged", detail: "本地已是最新" };
+
+  try {
+    await git(root, ["merge", "--ff-only", "origin/HEAD"]);
+    return { mode: "ff" };
+  } catch {
+    const beforeDesc = await git(root, ["log", "--oneline", "-3", "HEAD"]).catch(
+      () => "",
+    );
+    await git(root, ["reset", "--hard", "origin/HEAD"]);
+    console.warn(
+      "[notes-sync] force pull: local diverged, reset to remote. abandoned:\n",
+      beforeDesc,
+    );
+    return {
+      mode: "reset",
+      detail: `本地与远端分叉，已强制重置到 GitHub 最新。被放弃的本地提交：\n${beforeDesc}`,
+    };
+  }
+}
+
 /** 写操作后同步：add + commit + push（尽力而为） */
 export async function syncPushNotes(message: string): Promise<void> {
   const root = notesRepoRoot();

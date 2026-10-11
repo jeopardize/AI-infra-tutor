@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Markdown } from "@/components/Markdown";
+import { RichAnswerEditor } from "@/components/RichAnswerEditor";
+import { AnswerBody } from "@/components/AnswerBody";
 import type { QuizEvaluation } from "@/app/api/quiz/evaluate/route";
-import { BookOpenCheck, FileQuestion, Loader2, MessageSquareText } from "lucide-react";
+import { BookOpenCheck, FileQuestion, Loader2, MessageSquareText, Pencil } from "lucide-react";
 
 interface AnswerResultProps {
   attempts: string[];
@@ -13,6 +15,8 @@ interface AnswerResultProps {
   evaluation: QuizEvaluation | null;
   /** 将我的答案保存为标准答案（题库题目才有加分按钮） */
   onSaveStandard?: (text: string) => Promise<boolean>;
+  /** 编辑最新一次作答（自我批注：改字色/高亮，保存为标准答案时保留格式） */
+  onUpdateLatest?: (html: string) => void;
   savingStandard?: boolean;
   savedStandard?: boolean;
   onRetry?: () => void;
@@ -24,11 +28,13 @@ export function AnswerResult({
   grading,
   evaluation,
   onSaveStandard,
+  onUpdateLatest,
   savingStandard,
   savedStandard,
   onRetry,
 }: AnswerResultProps) {
   const [askedText, setAskedText] = useState("");
+  const [annotating, setAnnotating] = useState(false);
   const latest = attempts[attempts.length - 1] ?? "";
 
   if (grading) {
@@ -80,14 +86,36 @@ export function AnswerResult({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 左：我的答案 */}
           <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50 dark:bg-zinc-950/40">
-            <h4 className="text-xs font-semibold text-zinc-500 mb-2">我的答案</h4>
+            <div className="flex items-center gap-2 mb-2">
+              <h4 className="text-xs font-semibold text-zinc-500">我的答案</h4>
+              {onUpdateLatest && latest.trim() && (
+                <button
+                  onClick={() => setAnnotating((v) => !v)}
+                  title="编辑批注：改文字颜色/高亮，保存为标准答案时保留格式"
+                  className="ml-auto flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <Pencil className="w-3 h-3" />
+                  {annotating ? "完成批注" : "批注"}
+                </button>
+              )}
+            </div>
             <div className="space-y-3 max-h-72 overflow-y-auto">
-              {[...attempts].reverse().map((a, i) => (
-                <div key={i} className="rounded-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3">
-                  <div className="text-[10px] text-zinc-400 mb-1">第 {attempts.length - i} 次作答</div>
-                  <div className="text-sm prose-tutor break-words"><Markdown>{a}</Markdown></div>
-                </div>
-              ))}
+              {annotating ? (
+                <RichAnswerEditor
+                  value={latest}
+                  onChange={(html) => onUpdateLatest?.(html)}
+                  minHeight={120}
+                />
+              ) : (
+                [...attempts].reverse().map((a, i) => (
+                  <div key={i} className="rounded-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3">
+                    <div className="text-[10px] text-zinc-400 mb-1">第 {attempts.length - i} 次作答</div>
+                    <div className="text-sm prose-tutor break-words">
+                      <AnswerBody text={a} />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -96,7 +124,7 @@ export function AnswerResult({
             <h4 className="text-xs font-semibold text-zinc-500 mb-2">标准答案</h4>
             {standardAnswer ? (
               <div className="max-h-72 overflow-y-auto">
-                <Markdown>{standardAnswer}</Markdown>
+                <AnswerBody text={standardAnswer} />
               </div>
             ) : (
               <div className="h-full min-h-[120px] flex flex-col items-center justify-center gap-1.5 text-zinc-300 dark:text-zinc-600">

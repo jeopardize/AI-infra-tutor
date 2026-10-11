@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useLang } from "@/lib/i18n/context";
+import { APP_VERSION, CHANGELOG } from "@/lib/versions";
 import {
   Loader2,
   Send,
   Trash2,
   MessageSquarePlus,
   Archive,
+  History,
 } from "lucide-react";
 import type { FeedbackItem } from "@/app/api/feedback/route";
 
@@ -78,6 +80,12 @@ export default function FeedbackPage() {
       <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
         <MessageSquarePlus className="w-6 h-6 text-[#1a73e8]" />
         {t.feedback.title}
+        <span
+          title={t.feedback.currentVersion}
+          className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+        >
+          v{APP_VERSION}
+        </span>
       </h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2">
         {t.feedback.subtitle}
@@ -187,6 +195,45 @@ export default function FeedbackPage() {
           ))}
         </ul>
       )}
+
+      {/* 版本更新日志（反馈：每次重新部署以新版本发布，这里总结更新内容） */}
+      <section className="mt-10">
+        <h2 className="text-base font-semibold flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
+          <History className="w-4 h-4 text-[#1a73e8]" />
+          {t.feedback.changelogTitle}
+        </h2>
+        {CHANGELOG.length === 0 ? (
+          <p className="text-sm text-zinc-400 mt-3">{t.feedback.changelogEmpty}</p>
+        ) : (
+          <ul className="mt-3 space-y-4">
+            {CHANGELOG.map((v, idx) => (
+              <li
+                key={v.version}
+                className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 bg-white dark:bg-[#292a2d]"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                    v{v.version}
+                  </span>
+                  {idx === 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                      {t.feedback.currentVersion}
+                    </span>
+                  )}
+                  <span className="text-xs text-zinc-400">{v.date}</span>
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {v.items.map((item, i) => (
+                    <li key={i} className="text-sm text-zinc-600 dark:text-zinc-300">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

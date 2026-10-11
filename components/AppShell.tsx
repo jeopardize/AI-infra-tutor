@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Languages } from "lucide-react";
+import { Languages, Moon, Sun } from "lucide-react";
 import { LanguageProvider, useLang } from "@/lib/i18n/context";
+import { ThemeProvider, useTheme } from "@/lib/theme";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <LanguageProvider>
-      <Shell>{children}</Shell>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <Shell>{children}</Shell>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }
 
@@ -71,9 +74,24 @@ function Shell({ children }: { children: React.ReactNode }) {
             <span className="text-zinc-400">/</span>
             <span className="text-zinc-400">{lang === "zh" ? "EN" : "中"}</span>
           </button>
+          <ThemeToggle />
         </div>
       </header>
       <main className="flex-1">{children}</main>
     </>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const dark = theme === "dark";
+  return (
+    <button
+      onClick={toggle}
+      title={dark ? "切换为浅色模式" : "切换为深色模式"}
+      className="p-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center"
+    >
+      {dark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+    </button>
   );
 }

@@ -22,13 +22,9 @@ cd "$REPO" || exit 1
 if ! run node "$REPO/scripts/friday-improve.cjs" --step edit; then
   echo "[$(date '+%F %T')] edit failed, pipeline aborted" >> "$LOG"; exit 1; fi
 
-# 2. 数据迁移：推送数据仓库（题目/简历/反馈/笔记，写时未推成功的在此补推）
-run bash "$REPO/scripts/notes-sync.sh"
-
-# 3. 部署：重启服务（build 已在校验阶段完成）
-if [ -x "$(command -v npx)" ]; then
-  run npx pm2 restart ai-tutor-web
-fi
+# 2+3. 数据迁移 + 同步 git 仓库 + 自动发版 + 构建 + 重启部署（复用升级流水线）
+if ! run bash "$REPO/scripts/update.sh" --no-pull; then
+  echo "[$(date '+%F %T')] update pipeline failed" >> "$LOG"; exit 1; fi
 
 # 4. 标记反馈为已处理（随后随第 6 步一起由下轮推送？不——立即再推一次数据仓库）
 PENDING="$HOME/apps/data/question-bank/friday-pending.json"

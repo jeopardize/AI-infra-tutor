@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ChevronRight,
+  CloudDownload,
   FileText,
   FilePlus,
   Folder,
@@ -60,6 +61,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [openPath, setOpenPath] = useState<string | null>(null);
+  const [pulling, setPulling] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -79,6 +81,32 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(load, [load]);
+
+  /** 从 GitHub 重新拉取笔记内容，完成后刷新树 */
+  async function pullFromGithub() {
+    if (pulling) return;
+    setPulling(true);
+    try {
+      const r = await fetch("/api/docs/pull", { method: "POST" });
+      const json = (await r.json()) as {
+        error?: string;
+        mode?: "ff" | "reset" | "unchanged";
+        detail?: string;
+      };
+      if (!r.ok) {
+        alert(`拉取失败：${json.error}`);
+        return;
+      }
+      if (json.mode === "reset" && json.detail) {
+        alert(json.detail);
+      }
+    } catch (e) {
+      alert(`拉取失败：${(e as Error).message}`);
+    } finally {
+      setPulling(false);
+      load();
+    }
+  }
 
   async function renameNode(node: DocNode) {
     const newName = window.prompt(`重命名「${node.name}」为：`, node.name);

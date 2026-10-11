@@ -178,15 +178,26 @@ npx pm2 restart ai-tutor-web    # 重启（改 .env 后必须重启才生效）
 npx pm2 delete ai-tutor-web     # 删除
 ```
 
-### 5. 配置每天 8:00 的企业微信推送
+### 5. 配置每周日 05:00 的自动升级 + 每日推送
 
 ```bash
 crontab -e
-# 加入一行：
+# 加入以下行：
+# 每日 8:00 企业微信推送（题库问题清单）
 0 8 * * * DAILY_PUSH_HOST=http://127.0.0.1:8001 /home/你的用户/apps/AI-infra-tutor/scripts/daily-push.sh
+# 笔记库/数据仓库每日兜底同步（22:30）
+30 22 * * * /home/你的用户/apps/AI-infra-tutor/scripts/notes-sync.sh
+# 每周日 05:00 自动升级：拉代码 → 自动发版 → 构建 → 先迁移数据并同步 git 仓库 → 重启
+0 5 * * 0 /home/你的用户/apps/AI-infra-tutor/scripts/update.sh
 ```
 
-脚本逻辑：调用 `POST /api/notify/daily-push`，失败自动重试 3 次，日志写在 `~/logs/daily-push.log`。
+- `daily-push.sh`：调用 `POST /api/notify/daily-push`，失败自动重试 3 次，日志写在 `~/logs/daily-push.log`。
+- `update.sh`：升级流水线（也可随时手动运行 `bash scripts/update.sh` 触发更新）。
+  升级时**先迁移数据并同步 git 仓库**（notes-sync），再重启服务；
+  服务启动时 `instrumentation.ts` 会自动执行数据迁移（`lib/data/migrations.ts` 迁移注册表），
+  确保每次升级后已有数据自动迁移到新版本结构，日志见 `~/logs/update.log`。
+- `scripts/release.cjs`：update.sh 内部调用，有新提交时自动 bump 版本号并追加版本更新日志（意见反馈页可见）。
+- `friday-improve.sh`（周日 LLM 自动润色反馈）内部复用 update.sh 完成发版与部署。
 
 ---
 
