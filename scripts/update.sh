@@ -43,11 +43,26 @@ fi
 # 2. 自动发版（有新提交时 bump 版本号 + 追加更新日志）
 node "$REPO/scripts/release.cjs" >> "$LOG" 2>&1 || say "WARN: release.cjs 失败，继续更新流程"
 
-# 3. 依赖：package-lock 变化时重装
+# 3. 依赖：package-lock 变化时重装（低内存实例：先建 swap + 限制 node 内存，避免 npm ci/build 把机器打满卡死）
+ensure_swap() {
+  if ! swapon --show 2>/dev/null | grep -q swapfile; then
+    if [ ! -f /swapfile ]; then
+      say "创建 4G swap（低内存实例保护）"
+      sudo fallocate -l 4G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=none
+      sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null 2>&1
+      sudo swapon /swapfile 2>/dev/null || say "WARN: swap 启用失败"
+    else
+      sudo swapon /swapfile 2>/dev/null || true
+    fi
+  fi
+}
+ensure_swap
+export NODE_OPTIONS="--max-old-space-size=1280"
+
 LOCK_HASH="$(git hash-object package-lock.json 2>/dev/null || echo none)"
 if [ ! -f node_modules/.lockfile-hash ] || [ "$(cat node_modules/.lockfile-hash 2>/dev/null)" != "$LOCK_HASH" ]; then
-  say "依赖有变化，执行 npm ci --force"
-  if ! npm ci --force --registry=https://registry.npmmirror.com >> "$LOG" 2>&1; then
+  say "依赖有变化，执行 npm ci --force（prefer-offline 省流量）"
+  if ! npm ci --force --prefer-offline --no-audit --registry=https://registry.npmmirror.com >> "$LOG" 2>&1; then
     say "ERROR: npm ci 失败，中止"; exit 1
   fi
   echo "$LOCK_HASH" > node_modules/.lockfile-hash
