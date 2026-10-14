@@ -60,14 +60,25 @@ ensure_swap
 export NODE_OPTIONS="--max-old-space-size=1280"
 
 LOCK_HASH="$(git hash-object package-lock.json 2>/dev/null || echo none)"
-if [ ! -f node_modules/.lockfile-hash ] || [ "$(cat node_modules/.lockfile-hash 2>/dev/null)" != "$LOCK_HASH" ]; then
-  say "依赖有变化，执行 npm ci --force（prefer-offline 省流量）"
+NPM_INSTALL="npm install --force --prefer-offline --no-audit --registry=https://registry.npmmirror.com"
+if [ -d node_modules ]; then
+  # node_modules 已存在：增量安装（避免 npm ci 全量重装在低内存机器上打满卡死）
+  if [ ! -f node_modules/.lockfile-hash ] || [ "$(cat node_modules/.lockfile-hash 2>/dev/null)" != "$LOCK_HASH" ]; then
+    say "依赖有变化，执行增量 npm install"
+    if ! $NPM_INSTALL >> "$LOG" 2>&1; then
+      say "ERROR: npm install 失败，中止"; exit 1
+    fi
+    echo "$LOCK_HASH" > node_modules/.lockfile-hash
+  else
+    say "依赖无变化，跳过安装"
+  fi
+else
+  # 全新环境才全量 npm ci
+  say "node_modules 缺失，执行 npm ci --force"
   if ! npm ci --force --prefer-offline --no-audit --registry=https://registry.npmmirror.com >> "$LOG" 2>&1; then
     say "ERROR: npm ci 失败，中止"; exit 1
   fi
   echo "$LOCK_HASH" > node_modules/.lockfile-hash
-else
-  say "依赖无变化，跳过 npm ci"
 fi
 
 # 4. 构建
