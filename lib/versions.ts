@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.1.1";
+export const APP_VERSION = "1.1.2";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.1.2",
+    date: "2026-10-14",
+    items: [
+      "fix: update.sh 低内存保护——部署前自动启用 4G swap + 限制 node 内存 + npm prefer-offline，避免 npm ci/build 打满卡死",
+    ],
+  },
   {
     version: "1.1.1",
     date: "2026-10-11",
