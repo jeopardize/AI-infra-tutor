@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.1.2";
+export const APP_VERSION = "1.1.3";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.1.3",
+    date: "2026-10-15",
+    items: [
+      "fix: update.sh 自身被 pull 更新后重新执行（避免 bash 按旧偏移读新文件导致逻辑错乱）",
+      "fix: update.sh 依赖安装改为增量 npm install（node_modules 存在时不再 npm ci 全量重装，避免低内存卡死）",
+    ],
+  },
   {
     version: "1.1.2",
     date: "2026-10-14",
