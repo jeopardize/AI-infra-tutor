@@ -38,6 +38,11 @@ if [ "$PULL" = 1 ]; then
     git status --porcelain >> "$LOG" 2>&1
     exit 1
   fi
+  # 若本次 pull 更新了 update.sh 自身，重新执行新版本（bash 读文件偏移问题）
+  if git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -qx "scripts/update.sh"; then
+    say "update.sh 自身已更新，重新执行"
+    exec bash "$0" --no-pull "$@"
+  fi
 fi
 
 # 2. 自动发版（有新提交时 bump 版本号 + 追加更新日志）
