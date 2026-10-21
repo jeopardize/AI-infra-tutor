@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.1.3";
+export const APP_VERSION = "1.2.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.0",
+    date: "2026-10-21",
+    items: [
+      "Markdown 支持 ==高亮== 标记（含 ==**加粗**==、==*斜体*==、==`代码`== 组合；代码块内不误伤）",
+      "分屏时（笔记抽屉打开）页面 markdown 最大宽度自动让出抽屉宽度，不再被遮挡",
+      "笔记库支持同时打开多个笔记：抽屉内多标签页切换，各自独立编辑/预览与未保存草稿",
+      "升级流水线低内存保护：自动启用 swap、依赖安装改增量、update.sh 自我更新后重新执行",
+    ],
+  },
   {
     version: "1.1.3",
     date: "2026-10-15",

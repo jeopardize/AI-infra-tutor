@@ -9,7 +9,9 @@ import {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { remarkCallouts } from "@/lib/markdown/callouts";
+import { remarkHighlight } from "@/lib/markdown/highlight";
 import {
   Check,
   ChevronDown,
@@ -40,8 +42,8 @@ interface WriteResp {
   path?: string;
   bytes?: number;
   mtime?: number;
-  error?: string;
   currentMtime?: number;
+  error?: string;
   message?: string;
 }
 
@@ -67,6 +69,35 @@ function parseOutline(md: string): OutlineItem[] {
 const OUTLINE_HEIGHT_KEY = "doc-drawer-outline-height";
 const DRAWER_WIDTH_KEY = "doc-drawer-width";
 
+/** 单个打开的笔记标签页（多标签：每个文档独立缓存读取/草稿/编辑状态） */
+interface DocTab {
+  path: string;
+  data: DocReadResp | null;
+  loading: boolean;
+  err: string | null;
+  draft: string;
+  mode: "preview" | "edit";
+  savedMtime: number | undefined;
+  saving: boolean;
+  saveMsg: string | null;
+  saveMsgKind: "ok" | "warn" | "err";
+}
+
+function newTab(path: string): DocTab {
+  return {
+    path,
+    data: null,
+    loading: false,
+    err: null,
+    draft: "",
+    mode: "preview",
+    savedMtime: undefined,
+    saving: false,
+    saveMsg: null,
+    saveMsgKind: "ok",
+  };
+}
+
 export function DocDrawer({
   docPath,
   onClose,
@@ -78,17 +109,12 @@ export function DocDrawer({
   onSaved?: (path: string, mtime: number) => void;
 }) {
   const t = useT();
-  const [data, setData] = useState<DocReadResp | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const [mode, setMode] = useState<"preview" | "edit">("preview");
-  const [draft, setDraft] = useState<string>("");
-  const [savedMtime, setSavedMtime] = useState<number | undefined>(undefined);
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [saveMsgKind, setSaveMsgKind] = useState<"ok" | "warn" | "err">("ok");
+  const [tabs, setTabs] = useState<DocTab[]>([]);
+  const [activePath, setActivePath] = useState<string | null>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const fetchingRef = useRef<Set<string>>(new Set());
+
+  const activeTab = tabs.find((tb) => tb.path === activePath) ?? null;
 
   // 抽屉宽度（反馈：编辑区可拉宽）
   const [width, setWidth] = useState<number | null>(null);
@@ -103,55 +129,143 @@ export function DocDrawer({
     if (Number.isFinite(h) && h >= 64 && h <= 420) setOutlineHeight(h);
   }, []);
 
-  // 拉取文档内容
+  // 多标签：docPath 变化时新增/激活标签页；null 时关闭全部（抽屉卸载）
   useEffect(() => {
     if (!docPath) {
-      setData(null);
-      setErr(null);
-      setMode("preview");
-      setDraft("");
-      setSavedMtime(undefined);
+      setTabs([]);
+      setActivePath(null);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    setErr(null);
-    fetch(`/api/docs/read?path=${encodeURIComponent(docPath)}`)
-      .then(async (r) => {
-        const json = (await r.json()) as DocReadResp;
-        if (cancelled) return;
-        if (!r.ok) {
-          setErr(json.error ?? "读取失败");
-          setData(null);
-        } else {
-          setData(json);
-          setDraft(json.content);
-          setSavedMtime(json.mtime);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setErr((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setTabs((prev) =>
+      prev.some((tb) => tb.path === docPath) ? prev : [...prev, newTab(docPath)],
+    );
+    setActivePath(docPath);
   }, [docPath]);
+
+  // 懒加载：激活的标签页尚未拉取内容时请求 /api/docs/read
+  const loadDoc = useCallback(
+    (path: string) => {
+      if (fetchingRef.current.has(path)) return;
+      fetchingRef.current.add(path);
+      setTabs((prev) =>
+        prev.map((tb) => (tb.path === path ? { ...tb, loading: true, err: null } : tb)),
+      );
+      fetch(`/api/docs/read?path=${encodeURIComponent(path)}`)
+        .then(async (r) => {
+          const json = (await r.json()) as DocReadResp;
+          setTabs((prev) =>
+            prev.map((tb) => {
+              if (tb.path !== path) return tb;
+              if (!r.ok) {
+                return { ...tb, loading: false, err: json.error ?? "读取失败", data: null };
+              }
+              return { ...tb, loading: false, err: null, data: json, draft: json.content, savedMtime: json.mtime };
+            }),
+          );
+        })
+        .catch((e) => {
+          setTabs((prev) =>
+            prev.map((tb) =>
+              tb.path === path ? { ...tb, loading: false, err: (e as Error).message } : tb,
+            ),
+          );
+        })
+        .finally(() => {
+          fetchingRef.current.delete(path);
+        });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (activePath) {
+      const tb = tabs.find((x) => x.path === activePath);
+      if (tb && !tb.data && !tb.loading && !tb.err) loadDoc(activePath);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePath, tabs.length, loadDoc]);
 
   // 切到编辑模式时聚焦
   useEffect(() => {
-    if (mode === "edit") {
+    if (activeTab?.mode === "edit") {
       draftRef.current?.focus();
     }
-  }, [mode]);
+  }, [activePath, activeTab?.mode]);
+
+  // 分屏宽度通知：CSS 变量 --drawer-w，供被覆盖页面让出宽度（反馈2）
+  useEffect(() => {
+    function fallbackWidth(): number {
+      if (typeof window === "undefined") return 680;
+      if (window.innerWidth < 640) return window.innerWidth;
+      if (window.innerWidth < 1024) return 560;
+      return 680;
+    }
+    function apply() {
+      if (!docPath) {
+        document.documentElement.style.removeProperty("--drawer-w");
+        return;
+      }
+      const w = width ?? fallbackWidth();
+      if (window.innerWidth < 640) {
+        document.documentElement.style.removeProperty("--drawer-w");
+      } else {
+        document.documentElement.style.setProperty("--drawer-w", `${w}px`);
+      }
+    }
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [docPath, width]);
+
+  function updateTab(path: string, patch: Partial<DocTab>) {
+    setTabs((prev) => prev.map((tb) => (tb.path === path ? { ...tb, ...patch } : tb)));
+  }
+
+  const dirty = activeTab ? activeTab.data ? activeTab.draft !== activeTab.data.content : false : false;
+
+  async function save() {
+    if (!activeTab?.data) return;
+    const path = activeTab.path;
+    updateTab(path, { saving: true, saveMsg: null });
+    try {
+      const r = await fetch("/api/docs/write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: activeTab.data.path,
+          content: activeTab.draft,
+          expectMtime: activeTab.savedMtime,
+        }),
+      });
+      const json = (await r.json()) as WriteResp;
+      if (!r.ok) {
+        if (r.status === 409 && json.currentMtime) {
+          updateTab(path, { saveMsg: t.docDrawer.saveExternalConflict, saveMsgKind: "warn", saving: false });
+        } else {
+          updateTab(path, { saveMsg: t.docDrawer.saveFailed(json.error ?? r.statusText), saveMsgKind: "err", saving: false });
+        }
+        return;
+      }
+      const data = activeTab.data;
+      updateTab(path, {
+        data: { ...data, content: activeTab.draft, mtime: json.mtime!, bytes: json.bytes! },
+        savedMtime: json.mtime,
+        saveMsg: t.docDrawer.saveOk,
+        saveMsgKind: "ok",
+        saving: false,
+      });
+      onSaved?.(activeTab.data.path, json.mtime!);
+      setTimeout(() => updateTab(path, { saveMsg: null }), 2000);
+    } catch (e) {
+      updateTab(path, { saveMsg: t.docDrawer.saveFailed((e as Error).message), saveMsgKind: "err", saving: false });
+    }
+  }
 
   // Cmd/Ctrl+S 保存
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        if (mode === "edit" && dirty && !saving) {
+        if (activePath && dirty && !activeTab?.saving) {
           e.preventDefault();
           void save();
         }
@@ -160,134 +274,30 @@ export function DocDrawer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, draft, savedMtime, saving]);
+  }, [activePath, dirty, activeTab?.saving]);
 
   if (!docPath) return null;
 
-  const dirty = data ? draft !== data.content : false;
-
-  async function save() {
-    if (!data) return;
-    setSaving(true);
-    setSaveMsg(null);
-    try {
-      const r = await fetch("/api/docs/write", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: data.path,
-          content: draft,
-          expectMtime: savedMtime,
-        }),
-      });
-      const json = (await r.json()) as WriteResp;
-      if (!r.ok) {
-        if (r.status === 409 && json.currentMtime) {
-          setSaveMsg(t.docDrawer.saveExternalConflict);
-          setSaveMsgKind("warn");
-        } else {
-          setSaveMsg(t.docDrawer.saveFailed(json.error ?? r.statusText));
-          setSaveMsgKind("err");
-        }
-        return;
+  function closeTab(path: string) {
+    const tb = tabs.find((x) => x.path === path);
+    if (tb && tb.data && tb.draft !== tb.data.content && !confirm(t.docDrawer.confirmCloseUnsaved)) return;
+    setTabs((prev) => {
+      const next = prev.filter((x) => x.path !== path);
+      if (next.length === 0) {
+        setActivePath(null);
+        onClose();
+      } else if (path === activePath) {
+        const idx = prev.findIndex((x) => x.path === path);
+        const neighbor = next[Math.min(idx, next.length - 1)];
+        setActivePath(neighbor?.path ?? null);
       }
-      // 同步本地状态
-      setData({ ...data, content: draft, mtime: json.mtime!, bytes: json.bytes! });
-      setSavedMtime(json.mtime);
-      setSaveMsg(t.docDrawer.saveOk);
-      setSaveMsgKind("ok");
-      onSaved?.(data.path, json.mtime!);
-      // 2 秒后清掉提示
-      setTimeout(() => setSaveMsg(null), 2000);
-    } catch (e) {
-      setSaveMsg(t.docDrawer.saveFailed((e as Error).message));
-      setSaveMsgKind("err");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function reload() {
-    if (!docPath) return;
-    setDraft("");
-    setData(null);
-    setErr(null);
-    // 触发 effect 重新 fetch
-    const p = docPath;
-    setTimeout(() => {
-      // 通过 close + reopen 模拟 reload；更简单：直接重新 fetch
-      void (async () => {
-        setLoading(true);
-        const r = await fetch(`/api/docs/read?path=${encodeURIComponent(p)}`);
-        const json = (await r.json()) as DocReadResp;
-        if (r.ok) {
-          setData(json);
-          setDraft(json.content);
-          setSavedMtime(json.mtime);
-          setSaveMsg(null);
-        } else {
-          setErr(json.error ?? t.docDrawer.readFailed(""));
-        }
-        setLoading(false);
-      })();
-    }, 0);
-  }
-
-  // ---------- 拉宽抽屉（左缘拖动） ----------
-  function startWidthResize(e: ReactPointerEvent) {
-    e.preventDefault();
-    const startX = e.clientX;
-    const fallback =
-      typeof window === "undefined"
-        ? 680
-        : window.innerWidth < 640
-          ? window.innerWidth
-          : window.innerWidth < 1024
-            ? 560
-            : 680;
-    const startW = width ?? fallback;
-    function onMove(ev: globalThis.PointerEvent) {
-      const w = Math.min(
-        window.innerWidth - 24,
-        Math.max(420, startW + (startX - ev.clientX)),
-      );
-      setWidth(w);
-    }
-    function onUp() {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      setWidth((w) => {
-        if (w) localStorage.setItem(DRAWER_WIDTH_KEY, String(w));
-        return w;
-      });
-    }
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }
-
-  // ---------- 大纲高度拖动（上下伸缩） ----------
-  function startOutlineResize(e: ReactPointerEvent) {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startH = outlineHeight;
-    function onMove(ev: globalThis.PointerEvent) {
-      const h = Math.min(420, Math.max(64, startH + (ev.clientY - startY)));
-      setOutlineHeight(h);
-    }
-    function onUp() {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      setOutlineHeight((h) => {
-        localStorage.setItem(OUTLINE_HEIGHT_KEY, String(h));
-        return h;
-      });
-    }
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+      return next;
+    });
   }
 
   function jumpToHeading(h: OutlineItem, index: number) {
-    if (mode === "preview") {
+    if (!activeTab) return;
+    if (activeTab.mode === "preview") {
       const el = document.getElementById(`md-h-${index}`);
       el?.scrollIntoView({ block: "start", behavior: "smooth" });
     } else {
@@ -299,7 +309,7 @@ export function DocDrawer({
   }
 
   // 给 react-markdown 用：把相对图片路径改写到 /api/docs/asset
-  const baseDir = data?.dir ?? "";
+  const baseDir = activeTab?.data?.dir ?? "";
   function rewriteAsset(src: string): string {
     if (!src) return src;
     if (/^(https?:|data:|\/)/.test(src)) return src;
@@ -313,7 +323,11 @@ export function DocDrawer({
     return `/api/docs/asset?path=${encodeURIComponent(parts.join("/"))}`;
   }
 
-  const outlineSource = mode === "edit" ? draft : data?.content ?? "";
+  const outlineSource = activeTab
+    ? activeTab.mode === "edit"
+      ? activeTab.draft
+      : activeTab.data?.content ?? ""
+    : "";
   const outline = parseOutline(outlineSource);
 
   return (
@@ -331,10 +345,10 @@ export function DocDrawer({
       <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800">
         <div className="min-w-0 flex-1">
           <div className="text-xs text-zinc-500 truncate">
-            {t.docDrawer.headerLabel(data?.dir ?? "")}
+            {t.docDrawer.headerLabel(activeTab?.data?.dir ?? "")}
           </div>
           <div className="font-medium truncate flex items-center gap-1.5">
-            {data?.name ?? docPath}
+            {activeTab?.data?.name ?? activePath}
             {dirty && (
               <span className="text-xs text-amber-600">● {t.common.unsaved}</span>
             )}
@@ -342,17 +356,17 @@ export function DocDrawer({
         </div>
 
         {/* 模式切换 / 保存 */}
-        {data && (
+        {activeTab?.data && (
           <div className="flex items-center gap-1">
-            {mode === "edit" ? (
+            {activeTab.mode === "edit" ? (
               <>
                 <button
                   onClick={save}
-                  disabled={!dirty || saving}
+                  disabled={!dirty || activeTab.saving}
                   title="Cmd/Ctrl+S"
                   className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-700 flex items-center gap-1"
                 >
-                  {saving ? (
+                  {activeTab.saving ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <Save className="w-3.5 h-3.5" />
@@ -360,7 +374,7 @@ export function DocDrawer({
                   {t.common.save}
                 </button>
                 <button
-                  onClick={() => setMode("preview")}
+                  onClick={() => updateTab(activeTab.path, { mode: "preview" })}
                   className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
                 >
                   <Eye className="w-3.5 h-3.5" /> {t.common.preview}
@@ -368,7 +382,7 @@ export function DocDrawer({
               </>
             ) : (
               <button
-                onClick={() => setMode("edit")}
+                onClick={() => updateTab(activeTab.path, { mode: "edit" })}
                 className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
               >
                 <Pencil className="w-3.5 h-3.5" /> {t.common.edit}
@@ -388,22 +402,60 @@ export function DocDrawer({
         </button>
       </header>
 
+      {/* 多标签页（反馈：同时打开多个笔记） */}
+      {tabs.length > 1 && (
+        <div className="flex items-stretch overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 shrink-0">
+          {tabs.map((tb) => {
+            const isActive = tb.path === activePath;
+            const tabDirty = tb.data && tb.draft !== tb.data.content;
+            return (
+              <div
+                key={tb.path}
+                className={`group flex items-center gap-1 px-3 py-1.5 text-xs border-r border-zinc-200 dark:border-zinc-800 whitespace-nowrap cursor-pointer max-w-[220px] ${
+                  isActive
+                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-b-blue-600"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
+                }`}
+                onClick={() => setActivePath(tb.path)}
+                title={tb.path}
+              >
+                <span className="truncate">
+                  {tb.err ? "⚠ " : ""}
+                  {tb.data?.name ?? tb.path.split("/").pop()}
+                  {tabDirty && <span className="text-amber-600"> ●</span>}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(tb.path);
+                  }}
+                  className="p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-red-500 shrink-0"
+                  aria-label="关闭标签页"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* 顶部消息条（保存结果） */}
-      {saveMsg && (
+      {activeTab?.saveMsg && (
         <div className="px-4 py-2 text-xs flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
           <span
             className={
-              saveMsgKind === "ok"
+              activeTab.saveMsgKind === "ok"
                 ? "text-emerald-600 flex items-center gap-1"
                 : "text-rose-600"
             }
           >
-            {saveMsgKind === "ok" && <Check className="w-3 h-3" />}
-            {saveMsg}
+            {activeTab.saveMsgKind === "ok" && <Check className="w-3 h-3" />}
+            {activeTab.saveMsg}
           </span>
-          {saveMsgKind === "warn" && (
+          {activeTab.saveMsgKind === "warn" && (
             <button
-              onClick={reload}
+              onClick={() => loadDoc(activeTab.path)}
               className="text-xs text-blue-600 hover:underline"
             >
               {t.docDrawer.reload}
@@ -457,41 +509,41 @@ export function DocDrawer({
       )}
 
       <div className="flex-1 overflow-y-auto">
-        {loading && (
+        {activeTab?.loading && (
           <div className="flex items-center gap-2 text-zinc-500 p-5">
             <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.loading}
           </div>
         )}
-        {err && (
+        {activeTab?.err && (
           <div className="text-rose-600 text-sm p-5">
-            {t.docDrawer.readFailed(err)}
+            {t.docDrawer.readFailed(activeTab.err)}
           </div>
         )}
 
-        {data && mode === "preview" && (
+        {activeTab?.data && activeTab.mode === "preview" && (
           <div className="p-5">
-            {data.content.trim() === "" ? (
+            {activeTab.data.content.trim() === "" ? (
               <div className="text-zinc-400 italic">
                 {t.docDrawer.emptyContent}
               </div>
             ) : (
               <div className="prose-tutor">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkCallouts]}
+                  remarkPlugins={[remarkGfm, remarkBreaks, remarkHighlight, remarkCallouts]}
                   components={buildMarkdownComponents(rewriteAsset)}
                 >
-                  {data.content}
+                  {activeTab.data.content}
                 </ReactMarkdown>
               </div>
             )}
           </div>
         )}
 
-        {data && mode === "edit" && (
+        {activeTab?.data && activeTab.mode === "edit" && (
           <textarea
             ref={draftRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            value={activeTab.draft}
+            onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
             spellCheck={false}
             className="w-full h-full min-h-[300px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
             placeholder=""
@@ -499,19 +551,72 @@ export function DocDrawer({
         )}
       </div>
 
-      {data && (
+      {activeTab?.data && (
         <footer className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-200 dark:border-zinc-800 flex justify-between">
           <span>
-            {Math.round((data.bytes ?? 0) / 1024)} KB
-            {mode === "edit" && (
-              <span className="ml-3">{t.docDrawer.charsCount(draft.length)}</span>
+            {Math.round((activeTab.data.bytes ?? 0) / 1024)} KB
+            {activeTab.mode === "edit" && (
+              <span className="ml-3">{t.docDrawer.charsCount(activeTab.draft.length)}</span>
             )}
           </span>
-          <span>{t.docDrawer.updatedAt(new Date(data.mtime).toLocaleString())}</span>
+          <span>{t.docDrawer.updatedAt(new Date(activeTab.data.mtime).toLocaleString())}</span>
         </footer>
       )}
     </aside>
   );
+
+  // ---------- 拉宽抽屉（左缘拖动） ----------
+  function startWidthResize(e: ReactPointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const fallback =
+      typeof window === "undefined"
+        ? 680
+        : window.innerWidth < 640
+          ? window.innerWidth
+          : window.innerWidth < 1024
+            ? 560
+            : 680;
+    const startW = width ?? fallback;
+    function onMove(ev: globalThis.PointerEvent) {
+      const w = Math.min(
+        window.innerWidth - 24,
+        Math.max(420, startW + (startX - ev.clientX)),
+      );
+      setWidth(w);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setWidth((w) => {
+        if (w) localStorage.setItem(DRAWER_WIDTH_KEY, String(w));
+        return w;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  // ---------- 大纲高度拖动（上下伸缩） ----------
+  function startOutlineResize(e: ReactPointerEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = outlineHeight;
+    function onMove(ev: globalThis.PointerEvent) {
+      const h = Math.min(420, Math.max(64, startH + (ev.clientY - startY)));
+      setOutlineHeight(h);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setOutlineHeight((h) => {
+        localStorage.setItem(OUTLINE_HEIGHT_KEY, String(h));
+        return h;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 }
 
 /** 构建渲染组件：给每个标题按出现顺序加 md-h-N 锚点（与大纲一一对应） */

@@ -213,7 +213,10 @@ export default function InterviewPage() {
 
   if (stage === "config") {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div
+        className="max-w-3xl mx-auto px-4 py-8"
+        style={{ paddingRight: "var(--drawer-w, 0px)" }}
+      >
         <h1 className="text-2xl font-bold mb-1">{t.interview.title}</h1>
         <p className="text-zinc-500 dark:text-zinc-400 mb-6">
           {t.interview.subtitle}
@@ -334,7 +337,10 @@ export default function InterviewPage() {
 
   // interviewing / scoring
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col h-[calc(100vh-100px)]">
+    <div
+      className="max-w-4xl mx-auto px-4 py-6 flex flex-col h-[calc(100vh-100px)]"
+      style={{ paddingRight: "var(--drawer-w, 0px)" }}
+    >
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm text-zinc-500">
           {level} · {focus.map((c) => t.categories[c].label).join("/")} ·{" "}

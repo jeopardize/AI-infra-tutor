@@ -91,7 +91,10 @@ export default function LearnTopicPage({
       : "unknown";
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div
+      className="max-w-6xl mx-auto px-4 py-6"
+      style={{ paddingRight: "var(--drawer-w, 0px)" }}
+    >
       <Link
         href="/"
         className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-4"
