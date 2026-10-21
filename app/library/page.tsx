@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   ChevronRight,
   CloudDownload,
@@ -10,9 +10,10 @@ import {
   FolderPlus,
   Loader2,
   Pencil,
+  PanelLeft,
   RefreshCw,
 } from "lucide-react";
-import { DocDrawer } from "@/components/DocDrawer";
+import { DocPane } from "@/components/doc/DocPane";
 import { useT } from "@/lib/i18n/context";
 
 interface DocNode {
@@ -40,6 +41,9 @@ function extractPrefixNum(name: string): { num: number | null; rest: string } {
   return { num: null, rest: name.trim() };
 }
 
+const TREE_WIDTH_KEY = "doc-library-tree-width";
+const TREE_DEFAULT_WIDTH = 280;
+
 function sortNodes(nodes: DocNode[]): DocNode[] {
   const sorted = [...nodes].sort((a, b) => {
     const pa = extractPrefixNum(a.name);
@@ -62,6 +66,39 @@ export default function LibraryPage() {
   const [err, setErr] = useState<string | null>(null);
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
+  // 左右分栏：左侧目录树宽度/展开状态（反馈：页面本身为左右界面，目录可伸缩可调宽）
+  const [treeWidth, setTreeWidth] = useState<number | null>(null);
+  const [treeOpen, setTreeOpen] = useState(true);
+
+  useEffect(() => {
+    const w = Number(localStorage.getItem(TREE_WIDTH_KEY));
+    if (Number.isFinite(w) && w >= 160) setTreeWidth(w);
+    setTreeOpen(window.innerWidth >= 640);
+  }, []);
+
+  // ---------- 目录树宽度拖动（右缘分隔条） ----------
+  function startTreeResize(e: ReactPointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = treeWidth ?? TREE_DEFAULT_WIDTH;
+    function onMove(ev: globalThis.PointerEvent) {
+      const w = Math.min(
+        window.innerWidth * 0.6,
+        Math.max(160, startW + (ev.clientX - startX)),
+      );
+      setTreeWidth(w);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setTreeWidth((w) => {
+        if (w) localStorage.setItem(TREE_WIDTH_KEY, String(w));
+        return w;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -208,63 +245,110 @@ export default function LibraryPage() {
   }
 
   return (
-    <div
-      className="max-w-4xl mx-auto px-4 py-6"
-      style={{ paddingRight: "var(--drawer-w, 0px)" }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t.library.title}</h1>
-          <p className="text-zinc-500 text-sm mt-1">{t.library.subtitle}</p>
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden">
+      {/* 顶部工具条 */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => setTreeOpen((v) => !v)}
+            title={treeOpen ? "收起目录" : "展开目录"}
+            className="p-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            <PanelLeft className="w-3.5 h-3.5" />
+          </button>
+          <h1 className="text-base font-bold truncate">{t.library.title}</h1>
+          <span className="text-xs text-zinc-400 hidden md:inline truncate">
+            {t.library.subtitle}
+          </span>
         </div>
-        <button
-          onClick={load}
-          title={t.library.refreshShortcutHint}
-          className="px-3 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1.5"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> {t.common.refresh}
-          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400 rounded border border-zinc-200 dark:border-zinc-700 ml-0.5">
-            {t.library.refreshShortcutKey}
-          </kbd>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={pullFromGithub}
+            disabled={pulling}
+            title="从 GitHub 拉取最新笔记"
+            className="px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+          >
+            {pulling ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <CloudDownload className="w-3.5 h-3.5" />
+            )}
+            拉取
+          </button>
+          <button
+            onClick={load}
+            title={t.library.refreshShortcutHint}
+            className="px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> {t.common.refresh}
+            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400 rounded border border-zinc-200 dark:border-zinc-700 ml-0.5">
+              {t.library.refreshShortcutKey}
+            </kbd>
+          </button>
+        </div>
       </div>
 
-      {data?.root && (
-        <div className="text-xs text-zinc-500 mb-3 font-mono">{data.root}</div>
-      )}
+      {/* 左右分栏（反馈：页面本身为左右界面——左目录、右文档） */}
+      <div className="flex-1 flex min-h-0">
+        {/* 左：目录树（可伸缩/可调宽） */}
+        {treeOpen && (
+          <div
+            className="h-full overflow-y-auto overflow-x-hidden border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 shrink-0 relative"
+            style={{ width: treeWidth ?? TREE_DEFAULT_WIDTH }}
+          >
+            {loading && (
+              <div className="text-zinc-500 flex items-center gap-2 p-3 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" /> {t.library.scanning}
+              </div>
+            )}
+            {err && (
+              <div className="text-rose-600 text-sm p-3">
+                ⚠️ {err}
+                <div className="text-xs text-zinc-500 mt-1">{t.library.setEnvHint}</div>
+              </div>
+            )}
+            {data?.root && (
+              <div className="text-[10px] text-zinc-400 font-mono px-3 pt-2 pb-1 truncate" title={data.root}>
+                {data.root}
+              </div>
+            )}
+            {data?.tree && (
+              <div className="px-1.5 pb-3">
+                <Tree
+                  node={data.tree}
+                  depth={0}
+                  onOpen={setOpenPath}
+                  onNewFile={createFile}
+                  onNewDir={createDir}
+                  onRename={renameNode}
+                  onMoveNode={moveNode}
+                />
+              </div>
+            )}
+            {/* 右缘分隔条：拖动调整目录宽度 */}
+            <div
+              onPointerDown={startTreeResize}
+              className="absolute top-0 right-0 h-full w-1.5 cursor-ew-resize hover:bg-blue-500/30"
+              title="拖动调整目录宽度"
+            />
+          </div>
+        )}
 
-      {loading && (
-        <div className="text-zinc-500 flex items-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" /> {t.library.scanning}
-        </div>
-      )}
-
-      {err && (
-        <div className="text-rose-600 text-sm">
-          ⚠️ {err}
-          <div className="text-xs text-zinc-500 mt-1">{t.library.setEnvHint}</div>
-        </div>
-      )}
-
-      {data?.tree && (
-        <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 p-3">
-          <Tree
-            node={data.tree}
-            depth={0}
-            onOpen={setOpenPath}
-            onNewFile={createFile}
-            onNewDir={createDir}
-            onRename={renameNode}
-            onMoveNode={moveNode}
+        {/* 右：文档内容（多标签） */}
+        <div className="flex-1 min-w-0 h-full">
+          <DocPane
+            docPath={openPath}
+            onClose={() => setOpenPath(null)}
+            onSaved={() => load()}
+            placeholder={
+              <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-400 text-sm">
+                <FileText className="w-8 h-8" />
+                从左侧目录选择一个文档打开
+              </div>
+            }
           />
         </div>
-      )}
-
-      <DocDrawer
-        docPath={openPath}
-        onClose={() => setOpenPath(null)}
-        onSaved={() => load()}
-      />
+      </div>
     </div>
   );
 }
