@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.2.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.1",
+    date: "2026-10-21",
+    items: [
+      "笔记库改为左右分栏布局：左侧目录树（可伸缩/拖动调宽/记忆宽度）+ 右侧文档内容（多标签）",
+      "学习页/面试页保持侧边抽屉形态；文档面板主体抽为 DocPane 共享组件",
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-10-21",
