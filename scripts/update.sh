@@ -64,6 +64,9 @@ ensure_swap() {
 ensure_swap
 export NODE_OPTIONS="--max-old-space-size=1280"
 
+# 清掉可能残留的卡死 npm 安装进程（上次崩溃遗留会占用 node_modules / 内存）
+sudo pkill -9 -f "npm install" >/dev/null 2>&1 || true
+
 LOCK_HASH="$(git hash-object package-lock.json 2>/dev/null || echo none)"
 NPM_INSTALL="npm install --force --prefer-offline --no-audit --registry=https://registry.npmmirror.com"
 if [ -d node_modules ]; then
@@ -86,10 +89,18 @@ else
   echo "$LOCK_HASH" > node_modules/.lockfile-hash
 fi
 
-# 4. 构建
+# 4. 构建（低内存实例：先停服释放内存；失败降级重试，尽量保证服务可用）
 if [ "$BUILD" = 1 ]; then
+  say "构建前停止服务（释放内存）"
+  npx pm2 stop ai-tutor-web >> "$LOG" 2>&1 || true
   if ! npm run build >> "$LOG" 2>&1; then
-    say "ERROR: build 失败，中止（保持旧版本运行）"; exit 1
+    say "WARN: build 失败，以更小 node 内存重试一次"
+    export NODE_OPTIONS="--max-old-space-size=768"
+    if ! npm run build >> "$LOG" 2>&1; then
+      say "ERROR: build 重试仍失败，重启旧版本"
+      npx pm2 restart ai-tutor-web >> "$LOG" 2>&1 || true
+      exit 1
+    fi
   fi
 fi
 

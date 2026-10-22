@@ -5,8 +5,40 @@ import type { Components } from "react-markdown";
 import { useT } from "@/lib/i18n/context";
 
 let seq = 0;
+let loading: Promise<MermaidAPI> | null = null;
 
-/** mermaid 代码块 → SVG 图（客户端按需加载 mermaid，随主题切换 light/dark） */
+/** mermaid 从 CDN 运行时加载：不进构建产物，避免小内存服务器构建 OOM */
+interface MermaidAPI {
+  initialize: (config: Record<string, unknown>) => void;
+  render: (id: string, code: string) => Promise<{ svg: string }>;
+}
+
+function loadMermaid(): Promise<MermaidAPI> {
+  const w = window as unknown as {
+    mermaid?: MermaidAPI;
+    __mermaidLoading?: Promise<MermaidAPI>;
+  };
+  if (w.mermaid) return Promise.resolve(w.mermaid);
+  if (w.__mermaidLoading) return w.__mermaidLoading;
+  loading = new Promise<MermaidAPI>((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
+    s.async = true;
+    s.onload = () => {
+      if (w.mermaid) resolve(w.mermaid);
+      else reject(new Error("mermaid loaded but missing global"));
+    };
+    s.onerror = () => {
+      w.__mermaidLoading = undefined;
+      reject(new Error("mermaid CDN load failed"));
+    };
+    document.head.appendChild(s);
+  });
+  w.__mermaidLoading = loading;
+  return loading;
+}
+
+/** mermaid 代码块 → SVG 图（运行时从 CDN 按需加载，随主题切换 light/dark） */
 export function MermaidDiagram({ code }: { code: string }) {
   const t = useT().docDrawer;
   const [svg, setSvg] = useState<string | null>(null);
@@ -17,7 +49,7 @@ export function MermaidDiagram({ code }: { code: string }) {
     const id = `mmd-${++seq}-${Date.now().toString(36)}`;
     (async () => {
       try {
-        const mermaid = (await import("mermaid")).default;
+        const mermaid = await loadMermaid();
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: "strict",
