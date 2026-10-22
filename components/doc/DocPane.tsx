@@ -10,12 +10,15 @@ import {
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+import rehypeHighlight from "rehype-highlight";
 import { remarkCallouts } from "@/lib/markdown/callouts";
 import { remarkHighlight } from "@/lib/markdown/highlight";
+import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
 import {
   Check,
   ChevronDown,
   ChevronUp,
+  Code,
   ExternalLink,
   Eye,
   ListTree,
@@ -68,9 +71,29 @@ function parseOutline(md: string): OutlineItem[] {
 
 const OUTLINE_HEIGHT_KEY = "doc-drawer-outline-height";
 
+/** 图片扩展名：这些文件直接预览，不当作 markdown 读取 */
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
+
+/** 编辑器代码块语言候选（反馈：markdown 需要多种语法代码块输入） */
+const CODE_LANGS = [
+  "js",
+  "ts",
+  "json",
+  "python",
+  "cpp",
+  "java",
+  "bash",
+  "mermaid",
+  "yaml",
+  "sql",
+  "text",
+];
+
 /** 单个打开的笔记标签页（多标签：每个文档独立缓存读取/草稿/编辑状态） */
 export interface DocTab {
   path: string;
+  /** 图片文件：直接预览，无需读取内容 */
+  image?: boolean;
   data: DocReadResp | null;
   loading: boolean;
   err: string | null;
@@ -85,6 +108,7 @@ export interface DocTab {
 export function newDocTab(path: string): DocTab {
   return {
     path,
+    image: IMAGE_EXT_RE.test(path),
     data: null,
     loading: false,
     err: null,
@@ -169,51 +193,56 @@ export function useDocTabs(options: {
     [],
   );
 
-  // 懒加载：激活的标签页尚未拉取内容时请求
+  // 懒加载：激活的标签页尚未拉取内容时请求（图片标签直接走 /api/docs/asset 预览）
   useEffect(() => {
     if (!activePath) return;
     const tb = tabs.find((x) => x.path === activePath);
-    if (tb && !tb.data && !tb.loading && !tb.err) loadDoc(activePath);
+    if (tb && !tb.image && !tb.data && !tb.loading && !tb.err) loadDoc(activePath);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath, tabs.length, loadDoc]);
 
-  const save = useCallback(async () => {
-    if (!activeTab?.data) return;
-    const path = activeTab.path;
-    updateTab(path, { saving: true, saveMsg: null });
-    try {
-      const r = await fetch("/api/docs/write", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: activeTab.data.path,
-          content: activeTab.draft,
-          expectMtime: activeTab.savedMtime,
-        }),
-      });
-      const json = (await r.json()) as WriteResp;
-      if (!r.ok) {
-        if (r.status === 409 && json.currentMtime) {
-          updateTab(path, { saveMsg: t.docDrawer.saveExternalConflict, saveMsgKind: "warn", saving: false });
-        } else {
-          updateTab(path, { saveMsg: t.docDrawer.saveFailed(json.error ?? r.statusText), saveMsgKind: "err", saving: false });
+  const save = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!activeTab?.data) return;
+      const path = activeTab.path;
+      const silent = opts?.silent ?? false;
+      updateTab(path, { saving: true, saveMsg: null });
+      try {
+        const r = await fetch("/api/docs/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: activeTab.data.path,
+            content: activeTab.draft,
+            expectMtime: activeTab.savedMtime,
+            autosave: silent,
+          }),
+        });
+        const json = (await r.json()) as WriteResp;
+        if (!r.ok) {
+          if (r.status === 409 && json.currentMtime) {
+            updateTab(path, { saveMsg: t.docDrawer.saveExternalConflict, saveMsgKind: "warn", saving: false });
+          } else {
+            updateTab(path, { saveMsg: t.docDrawer.saveFailed(json.error ?? r.statusText), saveMsgKind: "err", saving: false });
+          }
+          return;
         }
-        return;
+        updateTab(path, {
+          data: { ...activeTab.data, content: activeTab.draft, mtime: json.mtime!, bytes: json.bytes! },
+          savedMtime: json.mtime,
+          saveMsg: silent ? t.docDrawer.autoSaved : t.docDrawer.saveOk,
+          saveMsgKind: "ok",
+          saving: false,
+        });
+        onSaved?.(activeTab.data.path, json.mtime!);
+        setTimeout(() => updateTab(path, { saveMsg: null }), silent ? 1200 : 2000);
+      } catch (e) {
+        updateTab(path, { saveMsg: t.docDrawer.saveFailed((e as Error).message), saveMsgKind: "err", saving: false });
       }
-      updateTab(path, {
-        data: { ...activeTab.data, content: activeTab.draft, mtime: json.mtime!, bytes: json.bytes! },
-        savedMtime: json.mtime,
-        saveMsg: t.docDrawer.saveOk,
-        saveMsgKind: "ok",
-        saving: false,
-      });
-      onSaved?.(activeTab.data.path, json.mtime!);
-      setTimeout(() => updateTab(path, { saveMsg: null }), 2000);
-    } catch (e) {
-      updateTab(path, { saveMsg: t.docDrawer.saveFailed((e as Error).message), saveMsgKind: "err", saving: false });
-    }
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, updateTab, onSaved]);
+    [activeTab, updateTab, onSaved, t],
+  );
 
   /** 关闭某个标签页；关到最后一个时回调 onClose */
   const closeTab = useCallback(
@@ -261,6 +290,7 @@ export function DocPane({
 }) {
   const t = useT();
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const [codeLang, setCodeLang] = useState("js");
   const {
     tabs,
     activePath,
@@ -332,6 +362,16 @@ export function DocPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [activePath, dirty, activeTab?.saving, save]);
 
+  // 自动保存：编辑模式下每 5 秒静默保存（反馈：笔记保存默认 5s 一次；
+  // 打字会重置计时，等价于停顿 5s 后保存；autosave 只写本地不触发 git push）
+  useEffect(() => {
+    if (activeTab?.mode !== "edit") return;
+    const timer = setInterval(() => {
+      if (dirty && !activeTab?.saving && activeTab?.data) void save({ silent: true });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [dirty, activeTab?.mode, activeTab?.saving, activeTab?.data, save]);
+
   function jumpToHeading(h: OutlineItem, index: number) {
     if (!activeTab) return;
     if (activeTab.mode === "preview") {
@@ -346,8 +386,7 @@ export function DocPane({
   }
 
   // 给 react-markdown 用：把相对图片路径改写到 /api/docs/asset
-  const baseDir = activeTab?.data?.dir ?? "";
-  function rewriteAsset(src: string): string {
+  const baseDir = activeTab?.data?.dir ?? "";  function rewriteAsset(src: string): string {
     if (!src) return src;
     if (/^(https?:|data:|\/)/.test(src)) return src;
     const joined = baseDir ? `${baseDir}/${src}` : src;
@@ -358,6 +397,96 @@ export function DocPane({
       else parts.push(seg);
     }
     return `/api/docs/asset?path=${encodeURIComponent(parts.join("/"))}`;
+  }
+
+  // ---------- 编辑器：插入代码块（包裹选中文本） ----------
+  function insertCodeBlock() {
+    const ta = draftRef.current;
+    if (!ta || !activeTab) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const sel = activeTab.draft.slice(start, end);
+    const snippet = `\`\`\`${codeLang}\n${sel}\n\`\`\``;
+    const next = activeTab.draft.slice(0, start) + snippet + activeTab.draft.slice(end);
+    updateTab(activeTab.path, { draft: next });
+    const caret = sel ? start + snippet.length : start + 4 + codeLang.length;
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+    });
+  }
+
+  // ---------- 编辑器：粘贴图片 → 上传到 <笔记目录>/images/ 并插入引用 ----------
+  function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (!file || !activeTab?.data) return;
+    e.preventDefault();
+    void uploadPastedImage(file);
+  }
+
+  async function uploadPastedImage(file: File) {
+    const tab = activeTab;
+    if (!tab?.data) return;
+    const path = tab.path;
+    const ts = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const extFromType = (file.type.split("/")[1] ?? "png").replace("jpeg", "jpg");
+    const defName = `Pasted-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.${extFromType}`;
+    // 反馈：图片名称可自行修改（默认给个带时间戳的建议名）
+    const input = window.prompt(t.docDrawer.pasteImageName(defName), defName);
+    if (!input) return;
+    let name = input.trim();
+    if (!IMAGE_EXT_RE.test(name)) name += `.${extFromType}`;
+    updateTab(path, { saving: true });
+    try {
+      const dataUrl = await new Promise<string>((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result));
+        fr.onerror = () => rej(new Error("read clipboard image failed"));
+        fr.readAsDataURL(file);
+      });
+      const dataBase64 = dataUrl.split(",")[1] ?? "";
+      const r = await fetch("/api/docs/upload-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dir: tab.data.dir, name, dataBase64 }),
+      });
+      const json = (await r.json()) as { path?: string; error?: string };
+      if (!r.ok || !json.path) {
+        updateTab(path, {
+          saveMsg: t.docDrawer.pasteImageFailed(json.error ?? r.statusText),
+          saveMsgKind: "err",
+          saving: false,
+        });
+        return;
+      }
+      const rel = tab.data.dir
+        ? json.path.slice(tab.data.dir.length + 1)
+        : json.path;
+      const md = `![${name.replace(/\.[^.]+$/, "")}](${rel})`;
+      const ta = draftRef.current;
+      const at = ta ? ta.selectionStart : tab.draft.length;
+      const needNl = at > 0 && tab.draft[at - 1] !== "\n";
+      const next =
+        tab.draft.slice(0, at) + (needNl ? "\n" : "") + md + "\n" + tab.draft.slice(at);
+      updateTab(path, { draft: next, saving: false });
+      requestAnimationFrame(() => {
+        const el = draftRef.current;
+        if (el) {
+          const caret = at + (needNl ? 1 : 0) + md.length + 1;
+          el.focus();
+          el.setSelectionRange(caret, caret);
+        }
+      });
+    } catch (e) {
+      updateTab(path, {
+        saveMsg: t.docDrawer.pasteImageFailed((e as Error).message),
+        saveMsgKind: "err",
+        saving: false,
+      });
+    }
   }
 
   const outlineSource = activeTab
@@ -392,7 +521,7 @@ export function DocPane({
             {activeTab.mode === "edit" ? (
               <>
                 <button
-                  onClick={save}
+                  onClick={() => save()}
                   disabled={!dirty || activeTab.saving}
                   title="Cmd/Ctrl+S"
                   className="px-2.5 py-1 text-xs rounded-md bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-700 flex items-center gap-1"
@@ -551,6 +680,17 @@ export function DocPane({
           </div>
         )}
 
+        {activeTab?.image && (
+          <div className="h-full flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-900/40">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/docs/asset?path=${encodeURIComponent(activeTab.path)}`}
+              alt={activeTab.path}
+              className="max-w-full max-h-full object-contain"
+            />
+          </div>
+        )}
+
         {activeTab?.data && activeTab.mode === "preview" && (
           <div className="p-5">
             {activeTab.data.content.trim() === "" ? (
@@ -561,6 +701,7 @@ export function DocPane({
               <div className="prose-tutor">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkBreaks, remarkHighlight, remarkCallouts]}
+                  rehypePlugins={[rehypeHighlight]}
                   components={buildMarkdownComponents(rewriteAsset)}
                 >
                   {activeTab.data.content}
@@ -571,14 +712,41 @@ export function DocPane({
         )}
 
         {activeTab?.data && activeTab.mode === "edit" && (
-          <textarea
-            ref={draftRef}
-            value={activeTab.draft}
-            onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
-            spellCheck={false}
-            className="w-full h-full min-h-[300px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
-            placeholder=""
-          />
+          <div className="h-full flex flex-col min-h-0">
+            {/* 编辑工具条：插入多语法代码块（反馈：markdown 缺少代码块输入） */}
+            <div className="flex items-center gap-1.5 px-4 py-1 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 text-xs shrink-0">
+              <Code className="w-3.5 h-3.5 text-zinc-400" />
+              <select
+                value={codeLang}
+                onChange={(e) => setCodeLang(e.target.value)}
+                className="px-1.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+              >
+                {CODE_LANGS.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={insertCodeBlock}
+                className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                {t.docDrawer.insertCodeBlock}
+              </button>
+              <span className="ml-auto text-zinc-400 text-[10px]">
+                {t.docDrawer.autoSaved} 5s
+              </span>
+            </div>
+            <textarea
+              ref={draftRef}
+              value={activeTab.draft}
+              onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
+              onPaste={onEditorPaste}
+              spellCheck={false}
+              className="w-full flex-1 min-h-[280px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
+              placeholder=""
+            />
+          </div>
         )}
       </div>
 
@@ -633,6 +801,7 @@ function buildMarkdownComponents(
       );
     };
   return {
+    ...markdownCodeComponents,
     h1: heading("h1"),
     h2: heading("h2"),
     h3: heading("h3"),

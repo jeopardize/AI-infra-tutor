@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.3.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.0",
+    date: "2026-10-22",
+    items: [
+      "笔记编辑自动保存：编辑停顿 5 秒自动保存到本地（不频繁触发 git 推送，手动保存时一并推送）",
+      "编辑器支持粘贴剪贴板图片：自动上传到当前笔记目录的 images/ 下，名称可自定义并自动插入引用",
+      "图片文件可直接预览（目录树点击 png/jpg/gif/webp/svg 即在右侧显示）；markdown 中的相对路径图片可正常渲染",
+      "代码块增强：编辑器一键插入多语言代码块（js/ts/json/python/cpp/java/bash/mermaid 等），预览带语法高亮，mermaid 图表直接渲染成图",
+    ],
+  },
   {
     version: "1.2.1",
     date: "2026-10-21",

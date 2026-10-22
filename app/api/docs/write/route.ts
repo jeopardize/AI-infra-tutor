@@ -10,6 +10,8 @@ interface WriteBody {
   content: string;
   /** 若传入：要求当前文件 mtime 等于此值，避免覆盖外部更新（可选） */
   expectMtime?: number;
+  /** 自动保存：只写本地文件，跳过 git commit+push（避免高频提交；下次手动保存时一并推送） */
+  autosave?: boolean;
   /** 默认 false：路径上的父目录如果不存在则失败；true 时自动 mkdir -p */
   createParents?: boolean;
 }
@@ -73,8 +75,10 @@ export async function POST(req: Request) {
   }
 
   await fs.writeFile(abs, body.content, "utf-8");
-  // 写入后自动 commit + push 到 GitHub（笔记库的主仓库）
-  await syncPushNotes(`web: update ${body.path}`);
+  // 写入后自动 commit + push 到 GitHub（笔记库的主仓库）；自动保存时跳过
+  if (!body.autosave) {
+    await syncPushNotes(`web: update ${body.path}`);
+  }
   const stat = await fs.stat(abs);
   return Response.json({
     path: body.path,

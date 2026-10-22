@@ -230,6 +230,12 @@ export interface Dict {
     reload: string;
     charsCount: (n: number) => string;
     updatedAt: (s: string) => string;
+    autoSaved: string;
+    insertCodeBlock: string;
+    pasteImageName: (def: string) => string;
+    pasteImageFailed: (e: string) => string;
+    mermaidFailed: string;
+    imageAlt: string;
   };
 
   // -------- question bank --------
@@ -541,6 +547,12 @@ const zh: Dict = {
     reload: "重新加载",
     charsCount: (n) => `${n} 字符`,
     updatedAt: (s) => `更新于 ${s}`,
+    autoSaved: "已自动保存",
+    insertCodeBlock: "插入代码块",
+    pasteImageName: (def) => `图片名称（保存到当前笔记目录的 images/ 下）：`,
+    pasteImageFailed: (e) => `图片上传失败：${e}`,
+    mermaidFailed: "mermaid 图表渲染失败",
+    imageAlt: "图片",
   },
   bank: {
     title: "题库管理",
@@ -869,6 +881,12 @@ const en: Dict = {
     reload: "Reload",
     charsCount: (n) => `${n} chars`,
     updatedAt: (s) => `Updated ${s}`,
+    autoSaved: "Auto-saved",
+    insertCodeBlock: "Insert code block",
+    pasteImageName: (def) => `Image name (saved under images/ next to this note):`,
+    pasteImageFailed: (e) => `Image upload failed: ${e}`,
+    mermaidFailed: "Failed to render mermaid diagram",
+    imageAlt: "Image",
   },
   bank: {
     title: "Question Bank",
