@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.3.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.1",
+    date: "2026-10-23",
+    items: [
+      "fix: mermaid 改为 CDN 运行时加载（移除 npm 依赖，避免小内存服务器构建 OOM）；update.sh 构建前停服释放内存+失败降级重试+清理残留 npm 进程",
+    ],
+  },
   {
     version: "1.3.0",
     date: "2026-10-22",
