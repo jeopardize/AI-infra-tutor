@@ -245,7 +245,7 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden">
+    <div className="h-[calc(100dvh-3.5rem)] flex flex-col overflow-hidden">
       {/* 顶部工具条 */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -288,13 +288,13 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {/* 左右分栏（反馈：页面本身为左右界面——左目录、右文档） */}
-      <div className="flex-1 flex min-h-0">
+      {/* 左右分栏（反馈：页面本身为左右界面——左目录、右文档）；手机端目录为全屏浮层 */}
+      <div className="flex-1 flex min-h-0 relative">
         {/* 左：目录树（可伸缩/可调宽） */}
         {treeOpen && (
           <div
-            className="h-full overflow-y-auto overflow-x-hidden border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 shrink-0 relative"
-            style={{ width: treeWidth ?? TREE_DEFAULT_WIDTH }}
+            className="h-full overflow-y-auto overflow-x-hidden border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 relative shrink-0 max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:right-0 max-sm:z-30 max-sm:w-full sm:[width:var(--tree-w)]"
+            style={{ "--tree-w": `${treeWidth ?? TREE_DEFAULT_WIDTH}px` } as React.CSSProperties}
           >
             {loading && (
               <div className="text-zinc-500 flex items-center gap-2 p-3 text-sm">
@@ -317,7 +317,10 @@ export default function LibraryPage() {
                 <Tree
                   node={data.tree}
                   depth={0}
-                  onOpen={setOpenPath}
+                  onOpen={(p) => {
+                    setOpenPath(p);
+                    if (window.innerWidth < 640) setTreeOpen(false);
+                  }}
                   onNewFile={createFile}
                   onNewDir={createDir}
                   onRename={renameNode}

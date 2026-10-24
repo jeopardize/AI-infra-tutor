@@ -30,7 +30,7 @@ export function DocDrawer({
 
   return (
     <aside
-      className="fixed top-0 right-0 h-full w-full sm:w-[560px] lg:w-[680px] bg-white dark:bg-zinc-950 z-50 shadow-2xl flex flex-col border-l border-zinc-200 dark:border-zinc-800"
+      className="fixed top-0 right-0 h-full w-full sm:w-[560px] lg:w-[680px] bg-white dark:bg-zinc-950 z-50 shadow-2xl flex flex-col border-l border-zinc-200 dark:border-zinc-800 max-sm:w-full!"
       style={width ? { width } : undefined}
     >
       {/* 左缘拉宽手柄 */}

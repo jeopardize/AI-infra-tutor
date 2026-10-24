@@ -261,8 +261,8 @@ export function BatchQuestionForm({ defaultCategory, onSaved }: Props) {
       )}
 
       {parsed && parsed.length > 0 && (
-        <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden overflow-x-auto">
+          <table className="w-full text-xs whitespace-nowrap sm:whitespace-normal">
             <thead className="bg-zinc-100 dark:bg-zinc-800">
               <tr>
                 <th className="px-2 py-1 text-left">分类</th>

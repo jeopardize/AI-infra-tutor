@@ -303,8 +303,10 @@ export function DocPane({
     closeTab,
   } = useDocTabs({ docPath, onClose, onSaved });
 
-  // 大纲面板：默认展开，高度可上下拖动调整
-  const [outlineOpen, setOutlineOpen] = useState(true);
+  // 大纲面板：桌面默认展开；手机端默认收起（节省纵向空间）
+  const [outlineOpen, setOutlineOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 640,
+  );
   const [outlineHeight, setOutlineHeight] = useState(170);
 
   useEffect(() => {
@@ -743,7 +745,7 @@ export function DocPane({
               onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
               onPaste={onEditorPaste}
               spellCheck={false}
-              className="w-full flex-1 min-h-[280px] p-5 text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
+              className="w-full flex-1 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
               placeholder=""
             />
           </div>

@@ -220,7 +220,7 @@ export function ResumeEditor({ data, onChange, onAutoFit, autoFitStatus }: Props
               <Field label={t.resume.name}>
                 <input className={INPUT_CLS} value={data.personalInfo.name} onChange={(e) => updatePersonal("name", e.target.value)} />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label={t.resume.phone}>
                   <input className={INPUT_CLS} value={data.personalInfo.phone} onChange={(e) => updatePersonal("phone", e.target.value)} />
                 </Field>
@@ -250,12 +250,12 @@ export function ResumeEditor({ data, onChange, onAutoFit, autoFitStatus }: Props
                 <DraggableList items={data.education} keyFn={(e) => e.id} onReorder={(items) => onChange({...data, education: items})}>
                   {(edu, _idx, entryDragging, onEntryGripMouseDown) => (
                     <EntryCard index={_idx + 1} onRemove={() => removeEducation(edu.id)} removeTitle={t.resume.removeEducation} isDragging={entryDragging} onGripMouseDown={onEntryGripMouseDown} hidden={edu.hidden} onToggleHidden={() => toggleEducationHidden(edu.id)}>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Field label={t.resume.school}><input className={INPUT_CLS} value={edu.school} onChange={(e) => updateEducation(edu.id, "school", e.target.value)} /></Field>
                         <Field label={t.resume.degree}><input className={INPUT_CLS} value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} /></Field>
                       </div>
                       <Field label={t.resume.major}><input className={INPUT_CLS} value={edu.major} onChange={(e) => updateEducation(edu.id, "major", e.target.value)} /></Field>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Field label={t.resume.startDate}><input className={INPUT_CLS} value={edu.startDate} onChange={(e) => updateEducation(edu.id, "startDate", e.target.value)} placeholder="2020.09" /></Field>
                         <Field label={t.resume.endDate}><input className={INPUT_CLS} value={edu.endDate} onChange={(e) => updateEducation(edu.id, "endDate", e.target.value)} placeholder="2024.06" /></Field>
                       </div>
@@ -278,11 +278,11 @@ export function ResumeEditor({ data, onChange, onAutoFit, autoFitStatus }: Props
                   {(exp, _idx, entryDragging, onEntryGripMouseDown) => (
                     <EntryCard index={_idx + 1} onRemove={() => removeExperience(exp.id)} removeTitle={t.resume.removeExperience} isDragging={entryDragging} onGripMouseDown={onEntryGripMouseDown} hidden={exp.hidden} onToggleHidden={() => toggleExperienceHidden(exp.id)}>
                       <Field label={t.resume.company}><input className={INPUT_CLS} value={exp.company} onChange={(e) => updateExperience(exp.id, "company", e.target.value)} /></Field>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Field label={t.resume.department}><input className={INPUT_CLS} value={exp.department} onChange={(e) => updateExperience(exp.id, "department", e.target.value)} /></Field>
                         <Field label={t.resume.position}><input className={INPUT_CLS} value={exp.position} onChange={(e) => updateExperience(exp.id, "position", e.target.value)} /></Field>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Field label={t.resume.startDate}><input className={INPUT_CLS} value={exp.startDate} onChange={(e) => updateExperience(exp.id, "startDate", e.target.value)} placeholder="2020.07" /></Field>
                         <Field label={t.resume.endDate}><input className={INPUT_CLS} value={exp.endDate} onChange={(e) => updateExperience(exp.id, "endDate", e.target.value)} placeholder="2024.06" /></Field>
                       </div>
@@ -313,7 +313,7 @@ export function ResumeEditor({ data, onChange, onAutoFit, autoFitStatus }: Props
                       <Field label={t.resume.projectName}><input className={INPUT_CLS} value={proj.name} onChange={(e) => updateProject(proj.id, "name", e.target.value)} /></Field>
                       <Field label={t.resume.position}><input className={INPUT_CLS} value={proj.role} onChange={(e) => updateProject(proj.id, "role", e.target.value)} /></Field>
                       <Field label={t.resume.projectLink}><input className={INPUT_CLS} value={proj.link} onChange={(e) => updateProject(proj.id, "link", e.target.value)} placeholder="https://github.com/..." /></Field>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Field label={t.resume.startDate}><input className={INPUT_CLS} value={proj.startDate} onChange={(e) => updateProject(proj.id, "startDate", e.target.value)} placeholder="2024.01" /></Field>
                         <Field label={t.resume.endDate}><input className={INPUT_CLS} value={proj.endDate} onChange={(e) => updateProject(proj.id, "endDate", e.target.value)} placeholder="2024.06" /></Field>
                       </div>
