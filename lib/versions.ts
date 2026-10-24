@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.3.1";
+export const APP_VERSION = "1.4.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.0",
+    date: "2026-10-24",
+    items: [
+      "手机端适配：顶部导航改为汉堡菜单；笔记库目录树在手机上变为全屏浮层（选中文档自动返回内容区）",
+      "移动端细节：大纲面板手机默认收起、编辑框加大字号防 iOS 聚焦缩放、页面高度用 dvh 适配手机工具栏",
+      "题库批量导入表格可横向滚动；简历编辑表单手机单列布局；抽屉在手机上忽略记忆宽度保持全屏",
+    ],
+  },
   {
     version: "1.3.1",
     date: "2026-10-23",
