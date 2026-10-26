@@ -14,6 +14,7 @@ import rehypeHighlight from "rehype-highlight";
 import { remarkCallouts } from "@/lib/markdown/callouts";
 import { remarkHighlight } from "@/lib/markdown/highlight";
 import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
+import { PdfViewer } from "@/components/doc/PdfViewer";
 import {
   Check,
   ChevronDown,
@@ -21,13 +22,14 @@ import {
   Code,
   ExternalLink,
   Eye,
+  Languages,
   ListTree,
   Loader2,
   Pencil,
   Save,
   X,
 } from "lucide-react";
-import { useT } from "@/lib/i18n/context";
+import { useLang, useT } from "@/lib/i18n/context";
 
 interface DocReadResp {
   root: string;
@@ -74,6 +76,9 @@ const OUTLINE_HEIGHT_KEY = "doc-drawer-outline-height";
 /** 图片扩展名：这些文件直接预览，不当作 markdown 读取 */
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
 
+/** PDF：走 pdf.js 查看器（高亮/标注 + 文本层） */
+const PDF_EXT_RE = /\.pdf$/i;
+
 /** 编辑器代码块语言候选（反馈：markdown 需要多种语法代码块输入） */
 const CODE_LANGS = [
   "js",
@@ -94,6 +99,8 @@ export interface DocTab {
   path: string;
   /** 图片文件：直接预览，无需读取内容 */
   image?: boolean;
+  /** PDF 文件：走 PdfViewer（高亮/标注） */
+  pdf?: boolean;
   data: DocReadResp | null;
   loading: boolean;
   err: string | null;
@@ -103,12 +110,17 @@ export interface DocTab {
   saving: boolean;
   saveMsg: string | null;
   saveMsgKind: "ok" | "warn" | "err";
+  /** 网页翻译：译文 markdown（null=未翻译）；transView=true 时预览区显示译文 */
+  translated: string | null;
+  translating: boolean;
+  transView: boolean;
 }
 
 export function newDocTab(path: string): DocTab {
   return {
     path,
     image: IMAGE_EXT_RE.test(path),
+    pdf: PDF_EXT_RE.test(path),
     data: null,
     loading: false,
     err: null,
@@ -118,6 +130,9 @@ export function newDocTab(path: string): DocTab {
     saving: false,
     saveMsg: null,
     saveMsgKind: "ok",
+    translated: null,
+    translating: false,
+    transView: false,
   };
 }
 
@@ -193,11 +208,11 @@ export function useDocTabs(options: {
     [],
   );
 
-  // 懒加载：激活的标签页尚未拉取内容时请求（图片标签直接走 /api/docs/asset 预览）
+  // 懒加载：激活的标签页尚未拉取内容时请求（图片/PDF 标签直接走 /api/docs/asset 预览）
   useEffect(() => {
     if (!activePath) return;
     const tb = tabs.find((x) => x.path === activePath);
-    if (tb && !tb.image && !tb.data && !tb.loading && !tb.err) loadDoc(activePath);
+    if (tb && !tb.image && !tb.pdf && !tb.data && !tb.loading && !tb.err) loadDoc(activePath);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath, tabs.length, loadDoc]);
 
@@ -289,6 +304,7 @@ export function DocPane({
   placeholder?: React.ReactNode;
 }) {
   const t = useT();
+  const { lang } = useLang();
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const [codeLang, setCodeLang] = useState("js");
   const {
@@ -302,6 +318,50 @@ export function DocPane({
     save,
     closeTab,
   } = useDocTabs({ docPath, onClose, onSaved });
+
+  /** 网页翻译：预览模式下整篇翻译（代码块/链接/行内代码保持原样），缓存到标签页 */
+  const translateDoc = useCallback(async () => {
+    if (!activeTab?.data) return;
+    const tabPath = activeTab.path;
+    if (activeTab.translated !== null) {
+      updateTab(tabPath, { transView: true });
+      return;
+    }
+    updateTab(tabPath, { translating: true });
+    try {
+      const target = lang === "zh" ? "en" : "zh-CN";
+      // 保护围栏代码块、行内代码、链接/图片/URL（避免被机翻破坏语法）
+      const tokens: string[] = [];
+      let text = activeTab.data.content.replace(
+        /```[\s\S]*?(?:```|$)/g,
+        (m) => `\u0001${tokens.push(m) - 1}\u0001`,
+      );
+      text = text.replace(
+        /`[^`\n]+`|!\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\([^)]*\)|https?:\/\/\S+/g,
+        (m) => `\u0001${tokens.push(m) - 1}\u0001`,
+      );
+      const r = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, target }),
+      });
+      const j = (await r.json()) as { text?: string; error?: string };
+      if (!r.ok || !j.text) throw new Error(j.error ?? r.statusText);
+      const translated = j.text.replace(
+        /\u0001(\d+)\u0001/g,
+        (_, i) => tokens[Number(i)] ?? "",
+      );
+      updateTab(tabPath, { translating: false, translated, transView: true });
+    } catch (e) {
+      updateTab(tabPath, { translating: false, translated: null, transView: false });
+      updateTab(tabPath, {
+        saveMsg: t.docDrawer.translateFailed((e as Error).message),
+        saveMsgKind: "err",
+      });
+      setTimeout(() => updateTab(tabPath, { saveMsg: null }), 3000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, updateTab, lang]);
 
   // 大纲面板：桌面默认展开；手机端默认收起（节省纵向空间）
   const [outlineOpen, setOutlineOpen] = useState(
@@ -543,12 +603,27 @@ export function DocPane({
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => updateTab(activeTab.path, { mode: "edit" })}
-                className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
-              >
-                <Pencil className="w-3.5 h-3.5" /> {t.common.edit}
-              </button>
+              <>
+                <button
+                  onClick={translateDoc}
+                  disabled={activeTab.translating}
+                  title={t.docDrawer.translateBtn}
+                  className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1 disabled:opacity-50"
+                >
+                  {activeTab.translating ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Languages className="w-3.5 h-3.5" />
+                  )}
+                  {activeTab.translating ? t.docDrawer.translating : t.docDrawer.translateBtn}
+                </button>
+                <button
+                  onClick={() => updateTab(activeTab.path, { mode: "edit" })}
+                  className="px-2.5 py-1 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> {t.common.edit}
+                </button>
+              </>
             )}
           </div>
         )}
@@ -670,6 +745,27 @@ export function DocPane({
         </div>
       )}
 
+      {/* 原文/译文切换（翻译完成后显示） */}
+      {activeTab?.data && activeTab.mode === "preview" && activeTab.translated !== null && (
+        <div className="px-4 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 flex items-center gap-2 text-xs shrink-0">
+          <div className="flex rounded-md border border-zinc-300 dark:border-zinc-700 overflow-hidden">
+            <button
+              onClick={() => updateTab(activeTab.path, { transView: false })}
+              className={"px-2 py-0.5 " + (!activeTab.transView ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800")}
+            >
+              {t.docDrawer.originalView}
+            </button>
+            <button
+              onClick={() => updateTab(activeTab.path, { transView: true })}
+              className={"px-2 py-0.5 " + (activeTab.transView ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800")}
+            >
+              {t.docDrawer.translatedView}
+            </button>
+          </div>
+          <span className="text-[10px] text-zinc-400">{t.docDrawer.translateHint}</span>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto min-h-0">
         {activeTab?.loading && (
           <div className="flex items-center gap-2 text-zinc-500 p-5">
@@ -679,6 +775,12 @@ export function DocPane({
         {activeTab?.err && (
           <div className="text-rose-600 text-sm p-5">
             {t.docDrawer.readFailed(activeTab.err)}
+          </div>
+        )}
+
+        {activeTab?.pdf && (
+          <div className="h-full min-h-0">
+            <PdfViewer path={activeTab.path} />
           </div>
         )}
 
@@ -695,7 +797,7 @@ export function DocPane({
 
         {activeTab?.data && activeTab.mode === "preview" && (
           <div className="p-5">
-            {activeTab.data.content.trim() === "" ? (
+            {(activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content).trim() === "" ? (
               <div className="text-zinc-400 italic">
                 {t.docDrawer.emptyContent}
               </div>
@@ -706,7 +808,7 @@ export function DocPane({
                   rehypePlugins={[rehypeHighlight]}
                   components={buildMarkdownComponents(rewriteAsset)}
                 >
-                  {activeTab.data.content}
+                  {activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content}
                 </ReactMarkdown>
               </div>
             )}

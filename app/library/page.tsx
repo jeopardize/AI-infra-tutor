@@ -379,18 +379,20 @@ function Tree({
   const [dropActive, setDropActive] = useState(false);
   if (node.type === "file") {
     const isMd = node.ext === ".md" || node.ext === ".markdown";
+    const isPdf = node.ext === ".pdf";
     const isImg = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(
       node.ext ?? "",
     );
+    const openable = isMd || isPdf;
     return (
       <button
-        onClick={() => isMd && onOpen(node.path)}
-        disabled={!isMd}
-        title={isMd ? t.library.clickToOpen : t.library.notPreviewable}
+        onClick={() => openable && onOpen(node.path)}
+        disabled={!openable}
+        title={openable ? t.library.clickToOpen : t.library.notPreviewable}
         style={{ paddingLeft: 12 + depth * 16 }}
         className={
           "w-full text-left py-1 text-sm rounded flex items-center gap-1.5 " +
-          (isMd
+          (openable
             ? "text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
             : "text-zinc-400 cursor-default")
         }
@@ -407,6 +409,7 @@ function Tree({
         <FileText className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate">{node.name}</span>
         {isImg && <span className="text-[10px] text-zinc-400">img</span>}
+        {isPdf && <span className="text-[10px] text-rose-400">pdf</span>}
       </button>
     );
   }

@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.5.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.0",
+    date: "2026-10-24",
+    items: [
+      "笔记库支持 PDF 预览：pdf.js 渲染（CDN 按需加载，不增加服务器依赖），翻页/缩放/按页懒渲染",
+      "PDF 高亮与标注：选中文字即高亮（5 种颜色），点击高亮可添加批注，标注列表侧栏可跳转；标注以 sidecar JSON 存入笔记库并同步 GitHub",
+      "网页翻译：预览模式新增「翻译」按钮，整页机翻（代码块/链接/行内代码保持原样），原文/译文一键切换；服务端 gtx→MyMemory 自动降级（国内服务器 Google 不可达）",
+    ],
+  },
   {
     version: "1.4.0",
     date: "2026-10-24",

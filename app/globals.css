@@ -274,3 +274,25 @@ body {
   color: #ffdcd7;
   background: #67060c;
 }
+
+/* PDF.js 文本层：透明文字覆盖在 canvas 上，支持选择生成高亮 */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+}
+.pdf-text-layer > span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+.pdf-text-layer ::selection {
+  background: rgba(59, 130, 246, 0.25);
+}

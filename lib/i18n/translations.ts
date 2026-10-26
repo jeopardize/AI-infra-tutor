@@ -236,6 +236,24 @@ export interface Dict {
     pasteImageFailed: (e: string) => string;
     mermaidFailed: string;
     imageAlt: string;
+    // PDF 预览与标注
+    pdfLoading: string;
+    pdfFailed: (e: string) => string;
+    pdfRetry: string;
+    pdfAnnotationList: string;
+    pdfSaved: string;
+    pdfSaveFailed: string;
+    pdfClearSelection: string;
+    pdfNotePlaceholder: string;
+    pdfDeleteAnnotation: string;
+    pdfNoAnnotations: string;
+    // 网页翻译
+    translateBtn: string;
+    translating: string;
+    originalView: string;
+    translatedView: string;
+    translateFailed: (e: string) => string;
+    translateHint: string;
   };
 
   // -------- question bank --------
@@ -553,6 +571,22 @@ const zh: Dict = {
     pasteImageFailed: (e) => `图片上传失败：${e}`,
     mermaidFailed: "mermaid 图表渲染失败",
     imageAlt: "图片",
+    pdfLoading: "正在加载 PDF…",
+    pdfFailed: (e) => `PDF 加载失败：${e}`,
+    pdfRetry: "重试",
+    pdfAnnotationList: "标注",
+    pdfSaved: "标注已保存",
+    pdfSaveFailed: "标注保存失败",
+    pdfClearSelection: "清除当前选择",
+    pdfNotePlaceholder: "给这个高亮添加批注…",
+    pdfDeleteAnnotation: "删除标注",
+    pdfNoAnnotations: "还没有标注。选中 PDF 文字即可添加高亮。",
+    translateBtn: "翻译",
+    translating: "翻译中…",
+    originalView: "原文",
+    translatedView: "译文",
+    translateFailed: (e) => `翻译失败：${e}`,
+    translateHint: "机器翻译仅供参考（代码块保持原样）",
   },
   bank: {
     title: "题库管理",
@@ -887,6 +921,22 @@ const en: Dict = {
     pasteImageFailed: (e) => `Image upload failed: ${e}`,
     mermaidFailed: "Failed to render mermaid diagram",
     imageAlt: "Image",
+    pdfLoading: "Loading PDF…",
+    pdfFailed: (e) => `Failed to load PDF: ${e}`,
+    pdfRetry: "Retry",
+    pdfAnnotationList: "Annotations",
+    pdfSaved: "Annotations saved",
+    pdfSaveFailed: "Failed to save annotations",
+    pdfClearSelection: "Clear current selection",
+    pdfNotePlaceholder: "Add a note to this highlight…",
+    pdfDeleteAnnotation: "Delete annotation",
+    pdfNoAnnotations: "No annotations yet. Select text in the PDF to add highlights.",
+    translateBtn: "Translate",
+    translating: "Translating…",
+    originalView: "Original",
+    translatedView: "Translation",
+    translateFailed: (e) => `Translation failed: ${e}`,
+    translateHint: "Machine translation for reference only (code blocks kept as-is)",
   },
   bank: {
     title: "Question Bank",

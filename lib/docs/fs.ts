@@ -33,7 +33,7 @@ export interface DocNode {
   children?: DocNode[];
 }
 
-const IGNORE = new Set([".git", ".DS_Store", "node_modules", ".obsidian"]);
+const IGNORE = new Set([".git", ".DS_Store", "node_modules", ".obsidian", ".annotations"]);
 
 export async function scanLibrary(): Promise<DocNode | null> {
   const root = libraryRoot();
