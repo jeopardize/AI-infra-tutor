@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.6.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.1",
+    date: "2026-10-27",
+    items: [
+      "fix: import-url 总时长上限放宽到 5 分钟（境外限速站点可完成）",
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-10-27",
