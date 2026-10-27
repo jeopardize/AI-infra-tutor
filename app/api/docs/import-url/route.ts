@@ -69,6 +69,7 @@ function download(urlStr: string): Promise<{ status: number; location: string | 
       {
         headers: { "User-Agent": UA, Accept: "application/pdf,*/*" },
         timeout: 60_000,
+        family: 4, // 服务器 IPv6 不通（ETIMEDOUT），强制 IPv4
       },
       (res) => {
         const startedAt = Date.now();
