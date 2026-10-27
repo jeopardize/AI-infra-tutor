@@ -14,6 +14,7 @@ export const runtime = "nodejs";
  */
 
 const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_TOTAL_MS = 5 * 60 * 1000; // 总时长上限（部分境外站点限速很慢，给足时间）
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
@@ -70,9 +71,15 @@ function download(urlStr: string): Promise<{ status: number; location: string | 
         timeout: 60_000,
       },
       (res) => {
+        const startedAt = Date.now();
         const chunks: Buffer[] = [];
         let total = 0;
         res.on("data", (c: Buffer) => {
+          if (Date.now() - startedAt > MAX_TOTAL_MS) {
+            req.destroy();
+            reject(new Error("下载超时（超过 5 分钟，请换更快的链接或本地下载后拖拽上传）"));
+            return;
+          }
           total += c.length;
           if (total > MAX_BYTES) {
             req.destroy();
