@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import https from "node:https";
 import http from "node:http";
+import dns from "node:dns";
 import { libraryRoot, resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -64,44 +65,61 @@ function download(urlStr: string): Promise<{ status: number; location: string | 
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const mod = u.protocol === "https:" ? https : http;
-    const req = mod.get(
-      u,
-      {
-        headers: { "User-Agent": UA, Accept: "application/pdf,*/*" },
-        timeout: 60_000,
-        family: 4, // 服务器 IPv6 不通（ETIMEDOUT），强制 IPv4
-      },
-      (res) => {
-        const startedAt = Date.now();
-        const chunks: Buffer[] = [];
-        let total = 0;
-        res.on("data", (c: Buffer) => {
-          if (Date.now() - startedAt > MAX_TOTAL_MS) {
-            req.destroy();
-            reject(new Error("下载超时（超过 5 分钟，请换更快的链接或本地下载后拖拽上传）"));
-            return;
-          }
-          total += c.length;
-          if (total > MAX_BYTES) {
-            req.destroy();
-            reject(new Error(`文件超过 ${MAX_BYTES / 1024 / 1024}MB 限制`));
-            return;
-          }
-          chunks.push(c);
+    const opts = {
+      headers: { "User-Agent": UA, Accept: "application/pdf,*/*" },
+      timeout: 60_000,
+      family: 4, // 服务器 IPv6 不通（ETIMEDOUT），强制 IPv4
+    };
+    // 部分 CDN（如 jsdelivr）多 A 记录中存在被墙/被拒的 IP，逐个尝试
+    dns.resolve4(u.hostname, (dnsErr, addresses) => {
+      const hosts = dnsErr ? [u.hostname] : addresses;
+      let idx = 0;
+      const tryNext = () => {
+        if (idx >= hosts.length) {
+          reject(new Error("无法连接下载源"));
+          return;
+        }
+        const host = hosts[idx++];
+        const req = mod.get(u, { ...opts, host, servername: u.hostname }, (res) => {
+          const startedAt = Date.now();
+          const chunks: Buffer[] = [];
+          let total = 0;
+          res.on("data", (c: Buffer) => {
+            if (Date.now() - startedAt > MAX_TOTAL_MS) {
+              req.destroy();
+              reject(new Error("下载超时（超过 5 分钟，请换更快的链接或本地下载后拖拽上传）"));
+              return;
+            }
+            total += c.length;
+            if (total > MAX_BYTES) {
+              req.destroy();
+              reject(new Error(`文件超过 ${MAX_BYTES / 1024 / 1024}MB 限制`));
+              return;
+            }
+            chunks.push(c);
+          });
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              location: res.headers.location ?? null,
+              headers: res.headers as Record<string, string>,
+              body: Buffer.concat(chunks),
+            }),
+          );
+          res.on("error", reject);
         });
-        res.on("end", () =>
-          resolve({
-            status: res.statusCode ?? 0,
-            location: res.headers.location ?? null,
-            headers: res.headers as Record<string, string>,
-            body: Buffer.concat(chunks),
-          }),
-        );
-        res.on("error", reject);
-      },
-    );
-    req.on("timeout", () => req.destroy(new Error("下载超时（60s）")));
-    req.on("error", reject);
+        req.on("timeout", () => req.destroy(new Error("下载超时（60s 无数据）")));
+        req.on("error", (e) => {
+          const code = (e as NodeJS.ErrnoException).code ?? "";
+          if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH/.test(code) && idx < hosts.length) {
+            tryNext();
+            return;
+          }
+          reject(e);
+        });
+      };
+      tryNext();
+    });
   });
 }
 
