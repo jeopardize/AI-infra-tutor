@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.6.1";
+export const APP_VERSION = "1.6.2";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.2",
+    date: "2026-10-27",
+    items: [
+      "fix: import-url 强制 IPv4（服务器 IPv6 ETIMEDOUT）",
+    ],
+  },
   {
     version: "1.6.1",
     date: "2026-10-27",
