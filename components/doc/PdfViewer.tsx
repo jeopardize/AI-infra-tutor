@@ -69,6 +69,8 @@ export interface PdfAnnotation {
   /** 归一化矩形（相对页面宽高的 0-1） */
   rects: Array<{ x: number; y: number; w: number; h: number }>;
   color: string;
+  /** highlight=填充高亮（默认）；underline=下划线 */
+  kind: "highlight" | "underline";
   quote: string;
   note: string;
   createdAt: number;
@@ -97,7 +99,6 @@ function PdfPageContent({
   pageNo,
   width,
   annotations,
-  activeColor,
   onCreate,
   onToggleAnnotation,
 }: {
@@ -106,8 +107,7 @@ function PdfPageContent({
   pageNo: number;
   width: number;
   annotations: PdfAnnotation[];
-  activeColor: string;
-  onCreate: (a: PdfAnnotation) => void;
+  onCreate: (sel: { rects: PdfAnnotation["rects"]; quote: string; x: number; y: number } | null) => void;
   /** 点击命中标注 → 打开编辑气泡；点空白 → 关闭 */
   onToggleAnnotation: (a: PdfAnnotation | null, x: number, y: number) => void;
 }) {
@@ -169,12 +169,12 @@ function PdfPageContent({
     };
   }, [pdfjs, doc, pageNo, width]);
 
-  /** 选中文字 → 生成高亮标注 */
-  function handleMouseUp() {
+  /** 选中文字 → 记录待选区（右键菜单里再选「高亮/下划线」；反馈：默认点击不高亮） */
+  function selectionRects(): PdfAnnotation["rects"] | null {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
     const box = wrapRef.current?.getBoundingClientRect();
-    if (!box) return;
+    if (!box) return null;
     const rects = Array.from(sel.getRangeAt(0).getClientRects())
       .filter(
         (r) =>
@@ -189,17 +189,26 @@ function PdfPageContent({
         w: Math.min(1, r.width / box.width),
         h: r.height / box.height,
       }));
-    if (!rects.length) return;
+    return rects.length ? rects : null;
+  }
+
+  function handleMouseUp() {
+    // 仅刷新待选区；无选择时清除（不高亮、不清除选区显示）
+    const rects = selectionRects();
+    onCreate(rects ? { rects, quote: window.getSelection()!.toString().trim(), x: 0, y: 0 } : null);
+  }
+
+  /** 右键：有待选区时弹出「高亮/下划线」菜单（拦截浏览器默认菜单） */
+  function handleContextMenu(e: React.MouseEvent) {
+    const rects = selectionRects();
+    if (!rects) return; // 无选择 → 浏览器默认菜单
+    e.preventDefault();
     onCreate({
-      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      page: pageNo,
       rects,
-      color: activeColor,
-      quote: sel.toString().trim(),
-      note: "",
-      createdAt: Date.now(),
+      quote: window.getSelection()!.toString().trim(),
+      x: e.clientX,
+      y: e.clientY,
     });
-    sel.removeAllRanges();
   }
 
   /** 点击命中检测：点在标注矩形上 → 编辑气泡；点空白 → 关闭 */
@@ -226,6 +235,7 @@ function PdfPageContent({
       className="relative bg-white shadow-md mx-auto"
       style={{ width }}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
       onClick={handleClick}
     >
       <canvas ref={canvasRef} className="block" />
@@ -238,14 +248,25 @@ function PdfPageContent({
             <div
               key={`${a.id}-${i}`}
               className="absolute rounded-[2px]"
-              style={{
-                left: `${r.x * 100}%`,
-                top: `${r.y * 100}%`,
-                width: `${r.w * 100}%`,
-                height: `${r.h * 100}%`,
-                background: colorAlpha(a.color, 0.38),
-                borderBottom: `2px solid ${colorAlpha(a.color, 0.9)}`,
-              }}
+              style={
+                (a.kind ?? "highlight") === "underline"
+                  ? {
+                      left: `${r.x * 100}%`,
+                      top: `${r.y * 100}%`,
+                      width: `${r.w * 100}%`,
+                      height: `${r.h * 100}%`,
+                      background: "transparent",
+                      borderBottom: `2.5px solid ${colorAlpha(a.color, 0.95)}`,
+                    }
+                  : {
+                      left: `${r.x * 100}%`,
+                      top: `${r.y * 100}%`,
+                      width: `${r.w * 100}%`,
+                      height: `${r.h * 100}%`,
+                      background: colorAlpha(a.color, 0.38),
+                      borderBottom: `2px solid ${colorAlpha(a.color, 0.9)}`,
+                    }
+              }
             />
           )),
         )}
@@ -276,6 +297,14 @@ export function PdfViewer({ path }: { path: string }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "ok" | "err">("idle");
   const [listOpen, setListOpen] = useState(false);
   const [pop, setPop] = useState<{ ann: PdfAnnotation; x: number; y: number } | null>(null);
+  /** 待选区：已框选文字、等右键/浮动条选择「高亮/下划线」 */
+  const [pending, setPending] = useState<{
+    page: number;
+    rects: PdfAnnotation["rects"];
+    quote: string;
+  } | null>(null);
+  /** 右键菜单位置（null=不显示） */
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageEls = useRef<Record<number, HTMLDivElement | null>>({});
@@ -409,9 +438,44 @@ export function PdfViewer({ path }: { path: string }) {
   };
   const curPage = visible.size ? Math.min(...visible) : 1;
 
-  const createAnnotation = useCallback(
-    (a: PdfAnnotation) => updateAnns([...(annsRef.current ?? []), a]),
-    [updateAnns],
+  /** 子页回调：null=清除待选区；x/y>0 表示来自右键（打开菜单），否则仅更新待选区 */
+  const handlePending = useCallback(
+    (
+      page: number,
+      sel: { rects: PdfAnnotation["rects"]; quote: string; x: number; y: number } | null,
+    ) => {
+      if (!sel) {
+        setPending(null);
+        setMenu(null);
+        return;
+      }
+      setPending({ page, rects: sel.rects, quote: sel.quote });
+      setMenu(sel.x > 0 || sel.y > 0 ? { x: sel.x, y: sel.y } : null);
+    },
+    [],
+  );
+
+  /** 从待选区创建标注（kind 由菜单/浮动条决定） */
+  const createFromPending = useCallback(
+    (kind: "highlight" | "underline") => {
+      if (!pending) return;
+      const a: PdfAnnotation = {
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        page: pending.page,
+        rects: pending.rects,
+        color,
+        kind,
+        quote: pending.quote,
+        note: "",
+        createdAt: Date.now(),
+      };
+      updateAnns([...(annsRef.current ?? []), a]);
+      window.getSelection()?.removeAllRanges();
+      setPending(null);
+      setMenu(null);
+      setPop(null);
+    },
+    [pending, color, updateAnns],
   );
 
   const patchAnnotation = (id: string, patch: Partial<PdfAnnotation>) =>
@@ -506,7 +570,7 @@ export function PdfViewer({ path }: { path: string }) {
 
       {/* 页面滚动区 */}
       <div ref={scrollRef} className="flex-1 overflow-auto min-h-0 bg-zinc-100 dark:bg-zinc-900"
-        onScroll={() => setPop(null)}>
+        onScroll={() => { setPop(null); setMenu(null); setPending(null); }}>
         <div className="py-3 flex flex-col" style={{ width: width * zoom + 24, margin: "0 auto", maxWidth: "none" }}>
           {Array.from({ length: numPages }, (_, i) => (
             <div
@@ -522,8 +586,7 @@ export function PdfViewer({ path }: { path: string }) {
                   pageNo={i + 1}
                   width={width * zoom}
                   annotations={anns}
-                  activeColor={color}
-                  onCreate={(a) => { createAnnotation(a); setPop(null); }}
+                  onCreate={(sel) => handlePending(i + 1, sel)}
                   onToggleAnnotation={(a, x, y) => setPop(a ? { ann: a, x, y } : null)}
                 />
               ) : (
@@ -539,6 +602,74 @@ export function PdfViewer({ path }: { path: string }) {
         </div>
       </div>
 
+      {/* 右键菜单：高亮 / 下划线 / 取消 */}
+      {menu && pending && (
+        <div
+          className="fixed z-[60] w-36 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl p-1 text-sm"
+          style={{
+            left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : 800) - 160),
+            top: Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : 600) - 140),
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => createFromPending("highlight")}
+            className="w-full text-left px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          >
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: colorAlpha(color, 0.6) }} />
+            {t.docDrawer.pdfHighlight}
+          </button>
+          <button
+            onClick={() => createFromPending("underline")}
+            className="w-full text-left px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          >
+            <span className="w-3 h-0.5 rounded inline-block" style={{ background: color }} />
+            {t.docDrawer.pdfUnderline}
+          </button>
+          <button
+            onClick={() => {
+              window.getSelection()?.removeAllRanges();
+              setPending(null);
+              setMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400"
+          >
+            {t.docDrawer.pdfClearSelection}
+          </button>
+        </div>
+      )}
+
+      {/* 待选区浮动条（触屏长按无法右键时的入口；桌面端选择后也可用） */}
+      {pending && !menu && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-2 py-1.5 rounded-full bg-zinc-900/90 dark:bg-zinc-800 text-white shadow-xl text-xs">
+          <span className="px-1 text-zinc-300 truncate max-w-[180px] hidden sm:inline">
+            {pending.quote.slice(0, 24)}…
+          </span>
+          <button
+            onClick={() => createFromPending("highlight")}
+            className="px-2.5 py-1 rounded-full bg-yellow-400 text-zinc-900 hover:bg-yellow-300 font-medium"
+          >
+            {t.docDrawer.pdfHighlight}
+          </button>
+          <button
+            onClick={() => createFromPending("underline")}
+            className="px-2.5 py-1 rounded-full bg-blue-500 hover:bg-blue-400"
+          >
+            {t.docDrawer.pdfUnderline}
+          </button>
+          <button
+            onClick={() => {
+              window.getSelection()?.removeAllRanges();
+              setPending(null);
+            }}
+            className="p-1 rounded-full hover:bg-zinc-700"
+            title={t.docDrawer.pdfClearSelection}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* 标注编辑气泡 */}
       {pop && (
         <div
@@ -550,6 +681,20 @@ export function PdfViewer({ path }: { path: string }) {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center gap-1 mb-1.5">
+            <div className="flex rounded-md border border-zinc-300 dark:border-zinc-700 overflow-hidden mr-1">
+              <button
+                onClick={() => patchAnnotation(pop.ann.id, { kind: "highlight" })}
+                className={"px-1.5 py-0.5 " + ((pop.ann.kind ?? "highlight") === "highlight" ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800")}
+              >
+                {t.docDrawer.pdfHighlight}
+              </button>
+              <button
+                onClick={() => patchAnnotation(pop.ann.id, { kind: "underline" })}
+                className={"px-1.5 py-0.5 " + (pop.ann.kind === "underline" ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800")}
+              >
+                {t.docDrawer.pdfUnderline}
+              </button>
+            </div>
             {COLORS.map((c) => (
               <button
                 key={c.value}

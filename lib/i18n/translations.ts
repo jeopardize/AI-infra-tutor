@@ -214,6 +214,17 @@ export interface Dict {
     clickToOpen: string;
     refreshShortcutKey: string;
     refreshShortcutHint: string;
+    // URL 导入 PDF
+    importUrlBtn: string;
+    importUrlTitle: string;
+    importUrlLabel: string;
+    importUrlPlaceholder: string;
+    importDirLabel: string;
+    importNameLabel: string;
+    importNamePlaceholder: string;
+    importing: string;
+    importOk: (name: string) => string;
+    importFailed: (e: string) => string;
   };
 
   // -------- DocDrawer --------
@@ -247,6 +258,8 @@ export interface Dict {
     pdfNotePlaceholder: string;
     pdfDeleteAnnotation: string;
     pdfNoAnnotations: string;
+    pdfHighlight: string;
+    pdfUnderline: string;
     // 网页翻译
     translateBtn: string;
     translating: string;
@@ -551,6 +564,16 @@ const zh: Dict = {
     clickToOpen: "点击查看/编辑",
     refreshShortcutKey: "Ctrl + R",
     refreshShortcutHint: "刷新笔记列表（Ctrl/Cmd + R）",
+    importUrlBtn: "URL 导入",
+    importUrlTitle: "从 URL 导入 PDF",
+    importUrlLabel: "PDF 链接",
+    importUrlPlaceholder: "https://arxiv.org/pdf/xxxx.pdf",
+    importDirLabel: "保存位置（留空=笔记库根目录）",
+    importNameLabel: "文件名（留空=自动取链接文件名）",
+    importNamePlaceholder: "例如：Attention Is All You Need.pdf",
+    importing: "正在下载到服务器…（视网速可能需要数十秒）",
+    importOk: (name) => `已导入：${name}`,
+    importFailed: (e) => `导入失败：${e}`,
   },
   docDrawer: {
     headerLabel: (dir) => `📚 我的笔记 · ${dir || ""}`,
@@ -580,7 +603,9 @@ const zh: Dict = {
     pdfClearSelection: "清除当前选择",
     pdfNotePlaceholder: "给这个高亮添加批注…",
     pdfDeleteAnnotation: "删除标注",
-    pdfNoAnnotations: "还没有标注。选中 PDF 文字即可添加高亮。",
+    pdfNoAnnotations: "还没有标注。选中 PDF 文字后右键（或长按）选择高亮/下划线。",
+    pdfHighlight: "高亮",
+    pdfUnderline: "下划线",
     translateBtn: "翻译",
     translating: "翻译中…",
     originalView: "原文",
@@ -900,6 +925,16 @@ const en: Dict = {
     clickToOpen: "Click to view/edit",
     refreshShortcutKey: "Ctrl/Cmd + R",
     refreshShortcutHint: "Refresh notes list (Ctrl/Cmd + R)",
+    importUrlBtn: "Import URL",
+    importUrlTitle: "Import PDF from URL",
+    importUrlLabel: "PDF link",
+    importUrlPlaceholder: "https://arxiv.org/pdf/xxxx.pdf",
+    importDirLabel: "Save to folder (empty = library root)",
+    importNameLabel: "File name (empty = auto from link)",
+    importNamePlaceholder: "e.g. Attention Is All You Need.pdf",
+    importing: "Downloading to server… (may take up to a minute)",
+    importOk: (name) => `Imported: ${name}`,
+    importFailed: (e) => `Import failed: ${e}`,
   },
   docDrawer: {
     headerLabel: (dir) => `📚 My Notes · ${dir || ""}`,
@@ -930,7 +965,9 @@ const en: Dict = {
     pdfClearSelection: "Clear current selection",
     pdfNotePlaceholder: "Add a note to this highlight…",
     pdfDeleteAnnotation: "Delete annotation",
-    pdfNoAnnotations: "No annotations yet. Select text in the PDF to add highlights.",
+    pdfNoAnnotations: "No annotations yet. Select text, then right-click (or long-press) to highlight/underline.",
+    pdfHighlight: "Highlight",
+    pdfUnderline: "Underline",
     translateBtn: "Translate",
     translating: "Translating…",
     originalView: "Original",

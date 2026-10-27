@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   ChevronRight,
   CloudDownload,
+  FileDown,
   FileText,
   FilePlus,
+  FileUp,
   Folder,
   FolderPlus,
   Loader2,
   Pencil,
   PanelLeft,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { DocPane } from "@/components/doc/DocPane";
 import { useT } from "@/lib/i18n/context";
@@ -69,6 +72,14 @@ export default function LibraryPage() {
   // 左右分栏：左侧目录树宽度/展开状态（反馈：页面本身为左右界面，目录可伸缩可调宽）
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
   const [treeOpen, setTreeOpen] = useState(true);
+  // URL 导入 PDF 对话框
+  const [importOpen, setImportOpen] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importDir, setImportDir] = useState("");
+  const [importName, setImportName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const w = Number(localStorage.getItem(TREE_WIDTH_KEY));
@@ -183,6 +194,22 @@ export default function LibraryPage() {
     load();
   }
 
+  /** 拖入本地 PDF 文件（浏览器下载兜底：不再需要手动上传入口） */
+  async function uploadFile(dirPath: string, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("dir", dirPath);
+    form.append("name", file.name);
+    const r = await fetch("/api/docs/upload-file", { method: "POST", body: form });
+    const json = (await r.json()) as { path?: string; error?: string };
+    if (!r.ok || !json.path) {
+      alert(`${t.library.importFailed(json.error ?? r.statusText)}`);
+      return;
+    }
+    load();
+    setOpenPath(json.path);
+  }
+
   // 绑定刷新快捷键：Ctrl/Cmd + R
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -244,6 +271,35 @@ export default function LibraryPage() {
     load();
   }
 
+  /** URL 直接导入 PDF（服务器抓取，免本地上传） */
+  async function submitImport() {
+    const url = importUrl.trim();
+    if (!url) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const r = await fetch("/api/docs/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, dir: importDir.trim(), name: importName.trim() }),
+      });
+      const json = (await r.json()) as { path?: string; error?: string };
+      if (!r.ok || !json.path) {
+        setImportMsg({ kind: "err", text: t.library.importFailed(json.error ?? r.statusText) });
+        return;
+      }
+      setImportMsg({ kind: "ok", text: t.library.importOk(json.path) });
+      setImportUrl("");
+      setImportName("");
+      load();
+      setOpenPath(json.path);
+    } catch (e) {
+      setImportMsg({ kind: "err", text: t.library.importFailed((e as Error).message) });
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="h-[calc(100dvh-3.5rem)] flex flex-col overflow-hidden">
       {/* 顶部工具条 */}
@@ -262,6 +318,32 @@ export default function LibraryPage() {
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              files.forEach((f) => uploadFile("", f));
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => uploadInputRef.current?.click()}
+            title="上传 PDF（或将 PDF 拖到目录树的文件夹上）"
+            className="px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+          >
+            <FileUp className="w-3.5 h-3.5" /> 上传
+          </button>
+          <button
+            onClick={() => setImportOpen(true)}
+            title={t.library.importUrlTitle}
+            className="px-2.5 py-1.5 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1"
+          >
+            <FileDown className="w-3.5 h-3.5" /> {t.library.importUrlBtn}
+          </button>
           <button
             onClick={pullFromGithub}
             disabled={pulling}
@@ -325,6 +407,7 @@ export default function LibraryPage() {
                   onNewDir={createDir}
                   onRename={renameNode}
                   onMoveNode={moveNode}
+                  onUploadFile={uploadFile}
                 />
               </div>
             )}
@@ -352,6 +435,77 @@ export default function LibraryPage() {
           />
         </div>
       </div>
+
+      {/* URL 导入 PDF 对话框 */}
+      {importOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={() => !importing && setImportOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl p-4 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                <FileDown className="w-4 h-4 text-blue-600" /> {t.library.importUrlTitle}
+              </h2>
+              <button
+                onClick={() => setImportOpen(false)}
+                disabled={importing}
+                className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                aria-label={t.common.close}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <label className="block text-xs text-zinc-500">
+              {t.library.importUrlLabel}
+              <input
+                autoFocus
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !importing) submitImport(); }}
+                placeholder={t.library.importUrlPlaceholder}
+                className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="block text-xs text-zinc-500">
+              {t.library.importDirLabel}
+              <input
+                value={importDir}
+                onChange={(e) => setImportDir(e.target.value)}
+                placeholder="例如：papers"
+                className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="block text-xs text-zinc-500">
+              {t.library.importNameLabel}
+              <input
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                placeholder={t.library.importNamePlaceholder}
+                className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 outline-none focus:border-blue-500"
+              />
+            </label>
+            {importing && (
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t.library.importing}
+              </div>
+            )}
+            {importMsg && (
+              <div className={"text-xs " + (importMsg.kind === "ok" ? "text-emerald-600" : "text-rose-600")}>
+                {importMsg.text}
+              </div>
+            )}
+            <button
+              onClick={submitImport}
+              disabled={importing || !importUrl.trim()}
+              className="w-full py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+              {t.library.importUrlBtn}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -364,6 +518,7 @@ function Tree({
   onNewDir,
   onRename,
   onMoveNode,
+  onUploadFile,
 }: {
   node: DocNode;
   depth: number;
@@ -372,6 +527,7 @@ function Tree({
   onNewDir: (parent: string) => void;
   onRename: (node: DocNode) => void;
   onMoveNode: (srcPath: string, targetDir: string) => void;
+  onUploadFile: (dir: string, file: File) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(depth < 1);
@@ -437,6 +593,13 @@ function Tree({
         onDrop={(e) => {
           e.preventDefault();
           setDropActive(false);
+          // 优先处理拖入的本机文件（PDF 等）
+          if (e.dataTransfer.files?.length) {
+            for (const f of Array.from(e.dataTransfer.files)) {
+              onUploadFile(node.path, f);
+            }
+            return;
+          }
           const src = e.dataTransfer.getData(DRAG_TYPE);
           if (!src || src === node.path || src.startsWith(`${node.path}/`)) return;
           onMoveNode(src, node.path);
@@ -511,6 +674,7 @@ function Tree({
               onNewDir={onNewDir}
               onRename={onRename}
               onMoveNode={onMoveNode}
+              onUploadFile={onUploadFile}
             />
           ))}
         </div>

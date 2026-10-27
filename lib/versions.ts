@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.6.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.0",
+    date: "2026-10-27",
+    items: [
+      "PDF 标注交互改为：默认点击不标注；选中文字后右键（触屏长按）弹出「高亮/下划线」菜单；点击已有标注可切换高亮/下划线样式",
+      "PDF 直接入库：工具条「URL 导入」粘贴链接由服务器直接抓取（内网地址防护 + 50MB 限制 + PDF 内容校验），免本地中转",
+      "新增 PDF 上传兜底：工具条「上传」按钮，或把本地 PDF 直接拖到目录树文件夹上（arxiv 等被墙站点服务器抓不到时用）",
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-10-24",
