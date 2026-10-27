@@ -12,6 +12,7 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeHighlight from "rehype-highlight";
 import { remarkCallouts } from "@/lib/markdown/callouts";
+import { preprocessFigRefs } from "@/lib/markdown/figrefs";
 import { remarkHighlight } from "@/lib/markdown/highlight";
 import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
 import { PdfViewer } from "@/components/doc/PdfViewer";
@@ -808,7 +809,7 @@ export function DocPane({
                   rehypePlugins={[rehypeHighlight]}
                   components={buildMarkdownComponents(rewriteAsset)}
                 >
-                  {activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content}
+                  {preprocessFigRefs(activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content)}
                 </ReactMarkdown>
               </div>
             )}
@@ -912,18 +913,40 @@ function buildMarkdownComponents(
     h4: heading("h4"),
     h5: heading("h5"),
     h6: heading("h6"),
-    img: ({ src, alt, ...rest }) => (
-      <img
-        src={typeof src === "string" ? rewriteAsset(src) : undefined}
-        alt={alt ?? ""}
-        style={{ maxWidth: "100%", height: "auto" }}
-        {...rest}
-      />
-    ),
+    img: ({ src, alt, title, ...rest }) => {
+      const imgEl = (
+        <img
+          src={typeof src === "string" ? rewriteAsset(src) : undefined}
+          alt={alt ?? ""}
+          style={{ maxWidth: "100%", height: "auto" }}
+          {...rest}
+        />
+      );
+      // Pandoc 式图片定义（figrefs.ts 改写）：渲染为带编号题注的 figure，id 供 [@fig:id] 跳转
+      const figId =
+        typeof title === "string" && title.startsWith("figdef:")
+          ? title.slice("figdef:".length)
+          : null;
+      if (!figId) return imgEl;
+      return (
+        <figure id={`figdef-${figId}`} className="my-4 text-center scroll-mt-16">
+          <span className="inline-block max-w-full">{imgEl}</span>
+          <figcaption className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            {alt}
+          </figcaption>
+        </figure>
+      );
+    },
     a: ({ href, children, ...rest }) => (
-      <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+      <a
+        href={href}
+        {...(href?.startsWith("#") ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+        {...rest}
+      >
         {children}
-        <ExternalLink className="inline w-3 h-3 ml-0.5 align-baseline" />
+        {!href?.startsWith("#") && (
+          <ExternalLink className="inline w-3 h-3 ml-0.5 align-baseline" />
+        )}
       </a>
     ),
   };

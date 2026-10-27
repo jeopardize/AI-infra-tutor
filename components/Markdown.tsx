@@ -6,6 +6,7 @@ import remarkBreaks from "remark-breaks";
 import rehypeHighlight from "rehype-highlight";
 import { remarkCallouts } from "@/lib/markdown/callouts";
 import { remarkHighlight } from "@/lib/markdown/highlight";
+import { preprocessFigRefs } from "@/lib/markdown/figrefs";
 import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
 
 export function Markdown({ children }: { children: string }) {
@@ -16,7 +17,7 @@ export function Markdown({ children }: { children: string }) {
         rehypePlugins={[rehypeHighlight]}
         components={markdownCodeComponents}
       >
-        {children}
+        {preprocessFigRefs(children)}
       </ReactMarkdown>
     </div>
   );

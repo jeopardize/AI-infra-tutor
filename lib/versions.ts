@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.6.3";
+export const APP_VERSION = "1.7.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.0",
+    date: "2026-10-27",
+    items: [
+      "markdown 支持 Pandoc 式图片交叉引用：![alt](src){#fig:id} 渲染为带编号题注的图，文中 [@fig:id] 自动替换为可点击跳转的「图 N」",
+      "编号按图在文中出现顺序（引用可先于定义）；引用缺失的 id 会标 ⚠️ 提示；代码块内不受影响",
+    ],
+  },
   {
     version: "1.6.3",
     date: "2026-10-27",
