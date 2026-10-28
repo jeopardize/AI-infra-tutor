@@ -260,6 +260,7 @@ export interface Dict {
     pdfNoAnnotations: string;
     pdfHighlight: string;
     pdfUnderline: string;
+    livePreview: string;
     // 网页翻译
     translateBtn: string;
     translating: string;
@@ -606,6 +607,7 @@ const zh: Dict = {
     pdfNoAnnotations: "还没有标注。选中 PDF 文字后右键（或长按）选择高亮/下划线。",
     pdfHighlight: "高亮",
     pdfUnderline: "下划线",
+    livePreview: "实时预览",
     translateBtn: "翻译",
     translating: "翻译中…",
     originalView: "原文",
@@ -968,6 +970,7 @@ const en: Dict = {
     pdfNoAnnotations: "No annotations yet. Select text, then right-click (or long-press) to highlight/underline.",
     pdfHighlight: "Highlight",
     pdfUnderline: "Underline",
+    livePreview: "Live preview",
     translateBtn: "Translate",
     translating: "Translating…",
     originalView: "Original",

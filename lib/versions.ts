@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.8.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.8.0",
+    date: "2026-10-27",
+    items: [
+      "编辑模式新增「实时预览」分栏（默认开启）：粘贴图片/插入代码块/交叉引用立即在右侧渲染出来，无需切换模式；手机端仍用预览切换",
+      "页头改为通栏布局：中/EN 与深浅色切换按钮贴窗口最右侧（宽屏下不再停留在内容区中间）",
+    ],
+  },
   {
     version: "1.7.0",
     date: "2026-10-27",

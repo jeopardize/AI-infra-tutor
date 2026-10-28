@@ -32,7 +32,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="border-b border-[#dadce0] dark:border-[#3c4043] bg-white dark:bg-[#292a2d] sticky top-0 z-10 shadow-sm">
-        <div className="max-w-6xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-6">
+        <div className="px-3 sm:px-6 h-14 flex items-center gap-2 sm:gap-6">
           {/* 移动端：汉堡菜单 */}
           <button
             onClick={() => setMenuOpen((v) => !v)}

@@ -369,6 +369,14 @@ export function DocPane({
     () => typeof window === "undefined" || window.innerWidth >= 640,
   );
   const [outlineHeight, setOutlineHeight] = useState(170);
+  // 编辑模式实时预览（反馈：编辑时插入的图片要立即可见）
+  const [livePreview, setLivePreview] = useState(true);
+  const [previewDraft, setPreviewDraft] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setPreviewDraft(activeTab?.draft ?? ""), 300);
+    return () => clearTimeout(timer);
+  }, [activeTab?.draft]);
 
   useEffect(() => {
     const h = Number(localStorage.getItem(OUTLINE_HEIGHT_KEY));
@@ -838,19 +846,43 @@ export function DocPane({
               >
                 {t.docDrawer.insertCodeBlock}
               </button>
+              {/* 实时预览开关（反馈：编辑时插入的图片要立即可见） */}
+              <button
+                onClick={() => setLivePreview((v) => !v)}
+                title={t.docDrawer.livePreview}
+                className={"px-2 py-1 rounded border flex items-center gap-1 " + (livePreview ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/40" : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                {t.docDrawer.livePreview}
+              </button>
               <span className="ml-auto text-zinc-400 text-[10px]">
                 {t.docDrawer.autoSaved} 5s
               </span>
             </div>
-            <textarea
-              ref={draftRef}
-              value={activeTab.draft}
-              onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
-              onPaste={onEditorPaste}
-              spellCheck={false}
-              className="w-full flex-1 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
-              placeholder=""
-            />
+            <div className="flex-1 flex min-h-0">
+              <textarea
+                ref={draftRef}
+                value={activeTab.draft}
+                onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
+                onPaste={onEditorPaste}
+                spellCheck={false}
+                className="flex-1 min-w-0 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
+                placeholder=""
+              />
+              {livePreview && (
+                <div className="hidden md:block w-1/2 min-w-0 overflow-y-auto border-l border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
+                  <div className="prose-tutor">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkBreaks, remarkHighlight, remarkCallouts]}
+                      rehypePlugins={[rehypeHighlight]}
+                      components={buildMarkdownComponents(rewriteAsset)}
+                    >
+                      {preprocessFigRefs(previewDraft)}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
