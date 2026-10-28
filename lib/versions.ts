@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.9.2";
+export const APP_VERSION = "1.9.3";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.9.3",
+    date: "2026-10-28",
+    items: [
+      "编辑器 Enter 自动续写引用/列表前缀：在 > 引用内回车自动补 > ，在列表内自动续 - /递增编号，多层嵌套（> > ）自动保持；空前缀行回车退出该层",
+      "Tab 在引用/列表行内改用半角空格缩进（与 - 对齐即产生真实嵌套层级），正文仍为全角空格",
+    ],
+  },
   {
     version: "1.9.2",
     date: "2026-10-28",

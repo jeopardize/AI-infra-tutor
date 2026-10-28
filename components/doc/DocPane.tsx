@@ -501,13 +501,83 @@ export function DocPane({
     return fence;
   }
 
+  /** 缩进单位：正文用全角空格（预览不折叠）；代码围栏/引用/列表行内用半角空格（产生真实嵌套层级） */
+  function indentUnit(text: string, pos: number): string {
+    if (insideFence(text, pos)) return INDENT_CODE;
+    const lineStart = text.lastIndexOf("\n", pos - 1) + 1;
+    const lineHead = text.slice(lineStart, pos);
+    if (/^[ \t]*>/.test(lineHead) || /^[ \t]*[*+-] /.test(lineHead) || /^[ \t]*\d+\. /.test(lineHead)) {
+      return INDENT_CODE;
+    }
+    return INDENT_TEXT;
+  }
+
   function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== "Tab" || !activeTab) return;
-    e.preventDefault();
+    if (!activeTab) return;
     const ta = e.currentTarget;
     const value = ta.value;
     const s = ta.selectionStart;
     const end = ta.selectionEnd;
+
+    // ---------- Enter：自动续写引用/列表前缀（反馈：嵌套结构不用手写前缀） ----------
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey && !e.ctrlKey && !e.metaKey &&
+      s === end && !insideFence(value, s)
+    ) {
+      const lineStart = value.lastIndexOf("\n", s - 1) + 1;
+      const curLine = value.slice(lineStart, s);
+      // 扫描行首前缀：空格/tab/引用符号
+      let i = 0;
+      while (
+        i < curLine.length &&
+        (curLine[i] === " " || curLine[i] === "\t" || curLine[i] === ">")
+      ) {
+        i++;
+      }
+      const prefixRaw = curLine.slice(0, i);
+      const afterPrefix = curLine.slice(i);
+      const lm = afterPrefix.match(/^([*+-] |(\d+)\. )/);
+      const markerRaw = lm ? lm[1] : "";
+      const content = afterPrefix.slice(markerRaw.length);
+      const isQuote = prefixRaw.includes(">");
+      const isList = !!markerRaw;
+
+      if (isQuote || isList) {
+        // 当前行只有前缀没有内容 → 回车退出该层（删掉前缀）
+        if (content.trim() === "") {
+          e.preventDefault();
+          const next = value.slice(0, lineStart) + value.slice(s);
+          updateTab(activeTab.path, { draft: next });
+          requestAnimationFrame(() => {
+            ta.focus();
+            ta.setSelectionRange(lineStart, lineStart);
+          });
+          return;
+        }
+        // 有内容 → 新行续写前缀（引用原样续；有序列表递增编号）
+        e.preventDefault();
+        let cont = prefixRaw;
+        if (isList) {
+          cont += lm![2] ? `${Number(lm![2]) + 1}. ` : markerRaw;
+        } else if (cont.endsWith(">")) {
+          cont += " ";
+        }
+        const next = value.slice(0, s) + "\n" + cont + value.slice(s);
+        const caret = s + 1 + cont.length;
+        updateTab(activeTab.path, { draft: next });
+        requestAnimationFrame(() => {
+          ta.focus();
+          ta.setSelectionRange(caret, caret);
+        });
+        return;
+      }
+      // 无前缀 → 默认行为
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+    e.preventDefault();
     const outdent = e.shiftKey;
 
     // 有选择（哪怕单行）或反缩进 → 行级缩进/反缩进
@@ -526,7 +596,7 @@ export function DocPane({
           delta -= cut;
           return line.slice(cut);
         }
-        const ins = insideFence(value, lineStart) ? INDENT_CODE : INDENT_TEXT;
+        const ins = indentUnit(value, lineStart);
         if (i === 0) firstDelta = ins.length;
         delta += ins.length;
         return ins + line;
@@ -560,7 +630,7 @@ export function DocPane({
     }
 
     // 普通插入
-    const ins = insideFence(value, s) ? INDENT_CODE : INDENT_TEXT;
+    const ins = indentUnit(value, s);
     const next = value.slice(0, s) + ins + value.slice(end);
     const caret = s + ins.length;
     updateTab(activeTab.path, { draft: next });
