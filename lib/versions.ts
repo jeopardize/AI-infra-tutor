@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.9.3";
+export const APP_VERSION = "1.10.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,20 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.10.0",
+    date: "2026-10-28",
+    items: [
+      "编辑工具新增「插入表格」：输入行x列（如 3x4，首行为表头）一键生成 markdown 表格",
+      "数学公式渲染（KaTeX）：$行内$ 与 $$公式块$$，题注行写「说明 {#eq:id}」（与公式块空一行）",
+      "表格/公式交叉引用：题注行 {#tbl:id} / {#eq:id} 定义，正文 [@tbl:id] / [@eq:id] 引用（与图片 [@fig:id] 同格式），渲染为可点击跳转的编号链接（表 1 / 式 (1)），未知引用标 ⚠️",
+      "PDF 页码显示跟随滚动修复（之前始终显示第 1 页）",
+      "PDF 高亮标点区域叠色修复（同行重叠矩形合并，颜色均匀）",
+      "上传限制 50MB → 200MB，上传时显示进度提示；目录树空白处可直接拖入 PDF（上传到根目录）",
+      "目录树右键菜单（新建笔记/新建文件夹/重命名/删除）；文件夹悬停按钮与文件悬停按钮均含删除（PDF 标注随文件一并清理）",
+      "目录树支持「全部收起」",
+    ],
+  },
   {
     version: "1.9.3",
     date: "2026-10-28",

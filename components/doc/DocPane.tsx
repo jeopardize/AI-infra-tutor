@@ -9,10 +9,13 @@ import {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import remarkBreaks from "remark-breaks";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import { remarkCallouts } from "@/lib/markdown/callouts";
 import { preprocessFigRefs } from "@/lib/markdown/figrefs";
+import { rehypeFigDefs } from "@/lib/markdown/figdefs";
 import { remarkHighlight } from "@/lib/markdown/highlight";
 import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
 import { PdfViewer } from "@/components/doc/PdfViewer";
@@ -484,6 +487,41 @@ export function DocPane({
     requestAnimationFrame(() => {
       ta.focus();
       ta.setSelectionRange(caret, caret);
+    });
+  }
+
+  // ---------- 编辑器：插入表格（反馈：缺少表格插入） ----------
+  function insertTable() {
+    const ta = draftRef.current;
+    if (!ta || !activeTab) return;
+    const input = window.prompt(t.docDrawer.insertTableSize, "3x4");
+    if (input === null) return;
+    const m = input.trim().match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+    if (!m || Number(m[1]) < 1 || Number(m[2]) < 1) {
+      window.alert(t.docDrawer.insertTableInvalid);
+      return;
+    }
+    const rows = Number(m[1]);
+    const cols = Number(m[2]);
+    const header = `| ${Array.from({ length: cols }, (_, c) => `列${c + 1}`).join(" | ")} |`;
+    const sep = `| ${Array.from({ length: cols }, () => "---").join(" | ")} |`;
+    const body = Array.from({ length: rows - 1 }, () =>
+      `| ${Array.from({ length: cols }, () => " ").join(" | ")} |`,
+    );
+    const snippet = [header, sep, ...body].join("\n");
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const head = activeTab.draft.slice(0, start);
+    const tail = activeTab.draft.slice(end);
+    const headPad =
+      head.trim() === "" ? "" : head.endsWith("\n\n") ? "" : head.endsWith("\n") ? "\n" : "\n\n";
+    const tailPad =
+      tail.trim() === "" ? "" : tail.startsWith("\n\n") ? "" : tail.startsWith("\n") ? "\n" : "\n\n";
+    const ins = headPad + snippet + tailPad;
+    updateTab(activeTab.path, { draft: head + ins + tail });
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + ins.length, start + ins.length);
     });
   }
 
@@ -965,8 +1003,8 @@ export function DocPane({
             ) : (
               <div className="prose-tutor">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkBreaks, remarkHighlight, remarkCallouts]}
-                  rehypePlugins={[rehypeHighlight]}
+                  remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
+                  rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
                   components={buildMarkdownComponents(rewriteAsset)}
                 >
                   {preprocessFigRefs(activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content)}
@@ -998,6 +1036,12 @@ export function DocPane({
               >
                 {t.docDrawer.insertCodeBlock}
               </button>
+              <button
+                onClick={insertTable}
+                className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                {t.docDrawer.insertTable}
+              </button>
               {/* 实时预览开关（反馈：编辑时插入的图片要立即可见） */}
               <button
                 onClick={() => setLivePreview((v) => !v)}
@@ -1026,8 +1070,8 @@ export function DocPane({
                 <div className="hidden md:block w-1/2 min-w-0 overflow-y-auto border-l border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
                   <div className="prose-tutor">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkBreaks, remarkHighlight, remarkCallouts]}
-                      rehypePlugins={[rehypeHighlight]}
+                      remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
+                      rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
                       components={buildMarkdownComponents(rewriteAsset)}
                     >
                       {preprocessFigRefs(previewDraft)}

@@ -5,7 +5,7 @@ import { syncPushNotes } from "@/lib/docs/sync";
 
 export const runtime = "nodejs";
 
-const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_BYTES = 200 * 1024 * 1024;
 
 /** 拖拽/按钮上传 PDF 到笔记库（被墙站点兜底：本地浏览器下载后直接拖进来） */
 export async function POST(req: Request) {

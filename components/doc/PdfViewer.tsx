@@ -93,6 +93,33 @@ function colorAlpha(hex: string, alpha: number): string {
 
 /* ---------- 单页渲染（canvas + 文本层 + 标注层） ---------- */
 
+/** 合并同行重叠矩形（反馈：标点符号区域被涂好几遍导致颜色不均）。
+ *  pdf.js 文本层按 span 切分，全角标点的字形框与前文重叠，逐 span 画半透明色会出现深色叠影；
+ *  垂直重叠超过一半视为同一行，合并为一个大矩形，保证同一次高亮内颜色均匀。 */
+function mergeRects<T extends { x: number; y: number; w: number; h: number }>(rects: T[]): T[] {
+  if (rects.length < 2) return rects;
+  const sorted = [...rects].sort((a, b) => a.y - b.y || a.x - b.x);
+  const out: T[] = [];
+  for (const r of sorted) {
+    const prev = out[out.length - 1];
+    if (prev) {
+      const overlap = Math.min(prev.y + prev.h, r.y + r.h) - Math.max(prev.y, r.y);
+      const minH = Math.min(prev.h, r.h);
+      if (minH > 0 && overlap > minH * 0.5) {
+        const right = Math.max(prev.x + prev.w, r.x + r.w);
+        const bottom = Math.max(prev.y + prev.h, r.y + r.h);
+        prev.x = Math.min(prev.x, r.x);
+        prev.y = Math.min(prev.y, r.y);
+        prev.w = right - prev.x;
+        prev.h = bottom - prev.y;
+        continue;
+      }
+    }
+    out.push({ ...r });
+  }
+  return out;
+}
+
 function PdfPageContent({
   pdfjs,
   doc,
@@ -189,7 +216,7 @@ function PdfPageContent({
         w: Math.min(1, r.width / box.width),
         h: r.height / box.height,
       }));
-    return rects.length ? rects : null;
+    return rects.length ? mergeRects(rects) : null;
   }
 
   function handleMouseUp() {
@@ -244,7 +271,7 @@ function PdfPageContent({
       {/* 标注层（纯视觉，点击命中由 handleClick 处理，不挡文字选择） */}
       <div className="absolute inset-0 z-20 pointer-events-none">
         {pageAnns.map((a) =>
-          a.rects.map((r, i) => (
+          mergeRects(a.rects).map((r, i) => (
             <div
               key={`${a.id}-${i}`}
               className="absolute rounded-[2px]"
@@ -433,10 +460,49 @@ export function PdfViewer({ path }: { path: string }) {
   }, [numPages, doc]);
 
   const setPage = (p: number) => {
+    curPageRef.current = p;
+    setCurPage(p);
     const el = pageEls.current[p];
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const curPage = visible.size ? Math.min(...visible) : 1;
+  const [curPage, setCurPage] = useState(1);
+  const curPageRef = useRef(1);
+
+  /* 当前页跟踪（反馈：页码显示不随滚动更新）：视口上 1/3 处所在的页 */
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || !numPages) return;
+    let raf = 0;
+    const update = () => {
+      const rr = root.getBoundingClientRect();
+      const y = rr.top + Math.min(rr.height / 3, 200);
+      for (const el of Object.values(pageEls.current)) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.top <= y && r.bottom > y) {
+          const p = Number(el.dataset.page);
+          if (p && p !== curPageRef.current) {
+            curPageRef.current = p;
+            setCurPage(p);
+          }
+          return;
+        }
+      }
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        update();
+      });
+    };
+    root.addEventListener("scroll", onScroll, { passive: true });
+    update();
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [numPages, doc]);
 
   /** 子页回调：null=清除待选区；x/y>0 表示来自右键（打开菜单），否则仅更新待选区 */
   const handlePending = useCallback(

@@ -225,6 +225,14 @@ export interface Dict {
     importing: string;
     importOk: (name: string) => string;
     importFailed: (e: string) => string;
+    confirmDelete: (what: string) => string;
+    deleteFailed: (e: string) => string;
+    uploading: string;
+    collapseAll: string;
+    menuRename: string;
+    menuDelete: string;
+    menuNewFile: string;
+    menuNewDir: string;
     splitBtn: string;
     splitHint: string;
     splitPlaceholder: string;
@@ -246,6 +254,9 @@ export interface Dict {
     updatedAt: (s: string) => string;
     autoSaved: string;
     insertCodeBlock: string;
+    insertTable: string;
+    insertTableSize: string;
+    insertTableInvalid: string;
     pasteImageName: (def: string) => string;
     pasteImageFailed: (e: string) => string;
     mermaidFailed: string;
@@ -578,6 +589,14 @@ const zh: Dict = {
     importing: "正在下载到服务器…（视网速可能需要数十秒）",
     importOk: (name) => `已导入：${name}`,
     importFailed: (e) => `导入失败：${e}`,
+    confirmDelete: (what) => `确定删除${what}？此操作不可撤销`,
+    deleteFailed: (e) => `删除失败：${e}`,
+    uploading: "上传中（大文件请稍候）…",
+    collapseAll: "全部收起",
+    menuRename: "重命名",
+    menuDelete: "删除",
+    menuNewFile: "新建笔记",
+    menuNewDir: "新建文件夹",
     splitBtn: "分屏",
     splitHint: "分屏：左右两栏对照阅读（md/pdf/图片任意组合），点击分栏切换聚焦，目录树打开的文件进入聚焦栏",
     splitPlaceholder: "分屏右侧：点击此处聚焦，再在目录树点击文件打开到这一栏（支持 md / pdf / 图片）",
@@ -597,6 +616,9 @@ const zh: Dict = {
     updatedAt: (s) => `更新于 ${s}`,
     autoSaved: "已自动保存",
     insertCodeBlock: "插入代码块",
+    insertTable: "插入表格",
+    insertTableSize: `表格规格（行x列，首行为表头，如 3x4）：`,
+    insertTableInvalid: "格式无效，请输入如 3x4",
     pasteImageName: (def) => `图片名称（保存到当前笔记目录的 images/ 下）：`,
     pasteImageFailed: (e) => `图片上传失败：${e}`,
     mermaidFailed: "mermaid 图表渲染失败",
@@ -943,6 +965,14 @@ const en: Dict = {
     importing: "Downloading to server… (may take up to a minute)",
     importOk: (name) => `Imported: ${name}`,
     importFailed: (e) => `Import failed: ${e}`,
+    confirmDelete: (what) => `Delete ${what}? This cannot be undone`,
+    deleteFailed: (e) => `Delete failed: ${e}`,
+    uploading: "Uploading (large files may take a while)…",
+    collapseAll: "Collapse all",
+    menuRename: "Rename",
+    menuDelete: "Delete",
+    menuNewFile: "New note",
+    menuNewDir: "New folder",
     splitBtn: "Split",
     splitHint: "Split view: side-by-side reading (md/pdf/images in any combo); click a pane to focus it, files opened from the tree go to the focused pane",
     splitPlaceholder: "Split right pane: click here to focus, then open a file from the tree into this pane (md / pdf / images)",
@@ -963,6 +993,9 @@ const en: Dict = {
     updatedAt: (s) => `Updated ${s}`,
     autoSaved: "Auto-saved",
     insertCodeBlock: "Insert code block",
+    insertTable: "Insert table",
+    insertTableSize: `Table size (rows x cols, first row is header, e.g. 3x4):`,
+    insertTableInvalid: "Invalid format, e.g. 3x4",
     pasteImageName: (def) => `Image name (saved under images/ next to this note):`,
     pasteImageFailed: (e) => `Image upload failed: ${e}`,
     mermaidFailed: "Failed to render mermaid diagram",

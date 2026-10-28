@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   ChevronRight,
+  ChevronsDownUp,
   CloudDownload,
   FileDown,
   FileText,
@@ -15,6 +16,7 @@ import {
   PanelLeft,
   RefreshCw,
   Columns2,
+  Trash2,
   X,
 } from "lucide-react";
 import { DocPane } from "@/components/doc/DocPane";
@@ -48,6 +50,8 @@ function extractPrefixNum(name: string): { num: number | null; rest: string } {
 const TREE_WIDTH_KEY = "doc-library-tree-width";
 const SPLIT_RATIO_KEY = "doc-library-split-ratio";
 const TREE_DEFAULT_WIDTH = 280;
+/** 右键菜单项（反馈：目录树右键现在只有重命名，新增删除/新建入口） */
+type MenuAction = "rename" | "delete" | "newFile" | "newDir";
 
 function sortNodes(nodes: DocNode[]): DocNode[] {
   const sorted = [...nodes].sort((a, b) => {
@@ -78,6 +82,7 @@ export default function LibraryPage() {
   const [splitRatio, setSplitRatio] = useState(50);
   const splitBoxRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
   // 左右分栏：左侧目录树宽度/展开状态（反馈：页面本身为左右界面，目录可伸缩可调宽）
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
   const [treeOpen, setTreeOpen] = useState(true);
@@ -89,6 +94,9 @@ export default function LibraryPage() {
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  // 目录树：全部收起信号（每次 +1 触发所有节点折叠）；右键菜单
+  const [collapseTick, setCollapseTick] = useState(0);
+  const [menu, setMenu] = useState<{ x: number; y: number; node: DocNode } | null>(null);
 
   useEffect(() => {
     const w = Number(localStorage.getItem(TREE_WIDTH_KEY));
@@ -217,6 +225,24 @@ export default function LibraryPage() {
     load();
   }
 
+  /** 删除文件/文件夹（文件夹连同内容；PDF 的标注 sidecar 由后端一并清理） */
+  async function deleteNode(node: DocNode) {
+    const what = node.type === "dir" ? `文件夹「${node.name}」及其全部内容` : `「${node.name}」`;
+    if (!window.confirm(`${t.library.confirmDelete(what)}`)) return;
+    const r = await fetch(`/api/docs/delete?path=${encodeURIComponent(node.path)}`, {
+      method: "DELETE",
+    });
+    const json = (await r.json()) as { error?: string };
+    if (!r.ok) {
+      alert(`${t.library.deleteFailed(json.error ?? r.statusText)}`);
+      return;
+    }
+    // 正在打开的文档若被删，先关闭
+    setOpenPath((p) => (p && (p === node.path || p.startsWith(`${node.path}/`)) ? null : p));
+    setRightPath((p) => (p && (p === node.path || p.startsWith(`${node.path}/`)) ? null : p));
+    load();
+  }
+
   /** 拖动文件/文件夹到目标文件夹：修改所属目录 */
   async function moveNode(srcPath: string, targetDir: string) {
     if (targetDir === srcPath || targetDir.startsWith(`${srcPath}/`)) return;
@@ -238,18 +264,23 @@ export default function LibraryPage() {
 
   /** 拖入本地 PDF 文件（浏览器下载兜底：不再需要手动上传入口） */
   async function uploadFile(dirPath: string, file: File) {
-    const form = new FormData();
-    form.append("file", file);
-    form.append("dir", dirPath);
-    form.append("name", file.name);
-    const r = await fetch("/api/docs/upload-file", { method: "POST", body: form });
-    const json = (await r.json()) as { path?: string; error?: string };
-    if (!r.ok || !json.path) {
-      alert(`${t.library.importFailed(json.error ?? r.statusText)}`);
-      return;
+    setUploading(`${file.name}`);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("dir", dirPath);
+      form.append("name", file.name);
+      const r = await fetch("/api/docs/upload-file", { method: "POST", body: form });
+      const json = (await r.json()) as { path?: string; error?: string };
+      if (!r.ok || !json.path) {
+        alert(`${t.library.importFailed(json.error ?? r.statusText)}`);
+        return;
+      }
+      load();
+      openDoc(json.path);
+    } finally {
+      setUploading(null);
     }
-    load();
-    openDoc(json.path);
   }
 
   // 绑定刷新快捷键：Ctrl/Cmd + R
@@ -444,15 +475,36 @@ export default function LibraryPage() {
               </div>
             )}
             {data?.root && (
-              <div className="text-[10px] text-zinc-400 font-mono px-3 pt-2 pb-1 truncate" title={data.root}>
-                {data.root}
+              <div className="flex items-center gap-1 text-[10px] text-zinc-400 font-mono px-3 pt-2 pb-1">
+                <span className="truncate flex-1" title={data.root}>{data.root}</span>
+                <button
+                  onClick={() => setCollapseTick((v) => v + 1)}
+                  title={t.library.collapseAll}
+                  className="p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 shrink-0"
+                >
+                  <ChevronsDownUp className="w-3 h-3" />
+                </button>
               </div>
             )}
             {data?.tree && (
-              <div className="px-1.5 pb-3">
+              <div
+                className="px-1.5 pb-3 min-h-[60%]"
+                onDragOver={(e) => {
+                  // 树空白处也可拖入本机 PDF（上传到根目录）
+                  if (!e.dataTransfer.types.includes("Files")) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                }}
+                onDrop={(e) => {
+                  if (!e.dataTransfer.files?.length) return;
+                  e.preventDefault();
+                  for (const f of Array.from(e.dataTransfer.files)) uploadFile("", f);
+                }}
+              >
                 <Tree
                   node={data.tree}
                   depth={0}
+                  collapseTick={collapseTick}
                   onOpen={(p) => {
                     if (splitOpen) {
                       if (focused === "left") setOpenPath(p);
@@ -465,8 +517,13 @@ export default function LibraryPage() {
                   onNewFile={createFile}
                   onNewDir={createDir}
                   onRename={renameNode}
+                  onDelete={deleteNode}
                   onMoveNode={moveNode}
                   onUploadFile={uploadFile}
+                  onMenu={(e, node) => {
+                    e.preventDefault();
+                    setMenu({ x: e.clientX, y: e.clientY, node });
+                  }}
                 />
               </div>
             )}
@@ -538,6 +595,56 @@ export default function LibraryPage() {
           )}
         </div>
       </div>
+
+      {/* 上传进度提示（反馈：大文件上传毫无反应感） */}
+      {uploading && (
+        <div className="fixed bottom-4 right-4 z-[80] flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 text-zinc-100 text-xs shadow-lg max-w-[70vw]">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          <span className="truncate">{t.library.uploading}</span>
+          <span className="text-zinc-400 truncate">{uploading}</span>
+        </div>
+      )}
+
+      {/* 目录树右键菜单 */}
+      {menu && (
+        <div className="fixed inset-0 z-[70]" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
+          <div
+            className="absolute min-w-36 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-xl text-sm"
+            style={{ left: menu.x, top: menu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menu.node.type === "dir" && (
+              <>
+                <button
+                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+                  onClick={() => { setMenu(null); createFile(menu.node.path); }}
+                >
+                  <FilePlus className="w-3.5 h-3.5 text-blue-600" /> {t.library.menuNewFile}
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+                  onClick={() => { setMenu(null); createDir(menu.node.path); }}
+                >
+                  <FolderPlus className="w-3.5 h-3.5 text-amber-600" /> {t.library.menuNewDir}
+                </button>
+                <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+              </>
+            )}
+            <button
+              className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+              onClick={() => { setMenu(null); renameNode(menu.node); }}
+            >
+              <Pencil className="w-3.5 h-3.5 text-zinc-500" /> {t.library.menuRename}
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
+              onClick={() => { setMenu(null); deleteNode(menu.node); }}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> {t.library.menuDelete}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* URL 导入 PDF 对话框 */}
       {importOpen && (
@@ -616,26 +723,36 @@ export default function LibraryPage() {
 function Tree({
   node,
   depth,
+  collapseTick,
   onOpen,
   onNewFile,
   onNewDir,
   onRename,
+  onDelete,
   onMoveNode,
   onUploadFile,
+  onMenu,
 }: {
   node: DocNode;
   depth: number;
+  collapseTick: number;
   onOpen: (p: string) => void;
   onNewFile: (parent: string) => void;
   onNewDir: (parent: string) => void;
   onRename: (node: DocNode) => void;
+  onDelete: (node: DocNode) => void;
   onMoveNode: (srcPath: string, targetDir: string) => void;
   onUploadFile: (dir: string, file: File) => void;
+  onMenu: (e: React.MouseEvent, node: DocNode) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(depth < 1);
   const [hover, setHover] = useState(false);
   const [dropActive, setDropActive] = useState(false);
+  // 「全部收起」：collapseTick 变化时折叠本节点
+  useEffect(() => {
+    if (collapseTick > 0) setOpen(false);
+  }, [collapseTick]);
   if (node.type === "file") {
     const isMd = node.ext === ".md" || node.ext === ".markdown";
     const isPdf = node.ext === ".pdf";
@@ -650,15 +767,12 @@ function Tree({
         title={openable ? t.library.clickToOpen : t.library.notPreviewable}
         style={{ paddingLeft: 12 + depth * 16 }}
         className={
-          "w-full text-left py-1 text-sm rounded flex items-center gap-1.5 " +
+          "w-full text-left py-1 text-sm rounded flex items-center gap-1.5 group " +
           (openable
             ? "text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
             : "text-zinc-400 cursor-default")
         }
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onRename(node);
-        }}
+        onContextMenu={(e) => onMenu(e, node)}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, node.path);
@@ -669,6 +783,30 @@ function Tree({
         <span className="truncate">{node.name}</span>
         {isImg && <span className="text-[10px] text-zinc-400">img</span>}
         {isPdf && <span className="text-[10px] text-rose-400">pdf</span>}
+        {openable && <span className="flex-1" />}
+        {openable && (
+          <span
+            className="hidden group-hover:flex items-center gap-0.5 pr-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              role="button"
+              onClick={() => onRename(node)}
+              title={t.library.menuRename}
+              className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            >
+              <Pencil className="w-3 h-3 text-zinc-500" />
+            </span>
+            <span
+              role="button"
+              onClick={() => onDelete(node)}
+              title={t.library.menuDelete}
+              className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/60"
+            >
+              <Trash2 className="w-3 h-3 text-rose-500" />
+            </span>
+          </span>
+        )}
       </button>
     );
   }
@@ -695,6 +833,7 @@ function Tree({
         onDragLeave={() => setDropActive(false)}
         onDrop={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           setDropActive(false);
           // 优先处理拖入的本机文件（PDF 等）
           if (e.dataTransfer.files?.length) {
@@ -712,10 +851,7 @@ function Tree({
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1.5 flex-1 min-w-0 font-medium text-left"
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onRename(node);
-          }}
+          onContextMenu={(e) => onMenu(e, node)}
         >
           <ChevronRight
             className={
@@ -758,10 +894,20 @@ function Tree({
               e.stopPropagation();
               onRename(node);
             }}
-            title="重命名"
+            title={t.library.menuRename}
             className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
           >
             <Pencil className="w-3.5 h-3.5 text-zinc-500" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(node);
+            }}
+            title={t.library.menuDelete}
+            className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/60"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
           </button>
         </div>
       </div>
@@ -772,12 +918,15 @@ function Tree({
               key={c.path}
               node={c}
               depth={depth + 1}
+              collapseTick={collapseTick}
               onOpen={onOpen}
               onNewFile={onNewFile}
               onNewDir={onNewDir}
               onRename={onRename}
+              onDelete={onDelete}
               onMoveNode={onMoveNode}
               onUploadFile={onUploadFile}
+              onMenu={onMenu}
             />
           ))}
         </div>
