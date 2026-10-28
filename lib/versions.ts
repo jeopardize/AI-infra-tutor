@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.9.1";
+export const APP_VERSION = "1.9.2";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.9.2",
+    date: "2026-10-28",
+    items: [
+      "编辑器 Tab 键插入缩进（正文为全角空格，预览不折叠、引用块前后都有效；代码围栏内为半角空格）；Shift+Tab 反缩进；选中一行或多行时整块缩进/反缩进",
+    ],
+  },
   {
     version: "1.9.1",
     date: "2026-10-28",

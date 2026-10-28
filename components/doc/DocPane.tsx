@@ -487,9 +487,91 @@ export function DocPane({
     });
   }
 
+  // ---------- 编辑器：Tab 缩进（反馈：Tab 插入缩进且预览中不失效） ----------
+  /** 正文插入两个全角空格（markdown 预览不折叠，引用块前后缩进都保持）；
+   *  代码围栏内插入半角空格保持代码语义 */
+  const INDENT_TEXT = "　　";
+  const INDENT_CODE = "  ";
+
+  function insideFence(text: string, pos: number): boolean {
+    let fence = false;
+    for (const line of text.slice(0, pos).split("\n")) {
+      if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    }
+    return fence;
+  }
+
+  function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Tab" || !activeTab) return;
+    e.preventDefault();
+    const ta = e.currentTarget;
+    const value = ta.value;
+    const s = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const outdent = e.shiftKey;
+
+    // 有选择（哪怕单行）或反缩进 → 行级缩进/反缩进
+    if (s !== end || outdent) {
+      const lineStart = value.lastIndexOf("\n", s - 1) + 1;
+      const lineEndIdx = value.indexOf("\n", Math.max(end - 1, s));
+      const segEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+      const lines = value.slice(lineStart, segEnd).split("\n");
+      let delta = 0;
+      let firstDelta = 0;
+      const processed = lines.map((line, i) => {
+        const m = line.match(/^(\u3000\u3000| {2}|\t)/);
+        if (outdent) {
+          const cut = m ? m[1].length : 0;
+          if (i === 0) firstDelta = -cut;
+          delta -= cut;
+          return line.slice(cut);
+        }
+        const ins = insideFence(value, lineStart) ? INDENT_CODE : INDENT_TEXT;
+        if (i === 0) firstDelta = ins.length;
+        delta += ins.length;
+        return ins + line;
+      });
+      const next =
+        value.slice(0, lineStart) + processed.join("\n") + value.slice(segEnd);
+      updateTab(activeTab.path, { draft: next });
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(
+          Math.max(lineStart, s + firstDelta),
+          Math.max(lineStart, end + delta),
+        );
+      });
+      return;
+    }
+
+    if (outdent) {
+      // 反缩进：删除光标所在行行首一个缩进单位
+      const lineStart = value.lastIndexOf("\n", s - 1) + 1;
+      const m = value.slice(lineStart).match(/^(\u3000\u3000| {2}|\t)/);
+      if (!m) return;
+      const next = value.slice(0, lineStart) + value.slice(lineStart + m[1].length);
+      const caret = Math.max(lineStart, s - m[1].length);
+      updateTab(activeTab.path, { draft: next });
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(caret, caret);
+      });
+      return;
+    }
+
+    // 普通插入
+    const ins = insideFence(value, s) ? INDENT_CODE : INDENT_TEXT;
+    const next = value.slice(0, s) + ins + value.slice(end);
+    const caret = s + ins.length;
+    updateTab(activeTab.path, { draft: next });
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+    });
+  }
+
   // ---------- 编辑器：粘贴图片 → 上传到 <笔记目录>/images/ 并插入引用 ----------
-  function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
+  function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {    const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
       f.type.startsWith("image/"),
     );
     if (!file || !activeTab?.data) return;
@@ -865,6 +947,7 @@ export function DocPane({
                 value={activeTab.draft}
                 onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
                 onPaste={onEditorPaste}
+                onKeyDown={onEditorKeyDown}
                 spellCheck={false}
                 className="flex-1 min-w-0 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
                 placeholder=""
