@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.8.0";
+export const APP_VERSION = "1.9.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.9.0",
+    date: "2026-10-28",
+    items: [
+      "笔记库分屏：左右两栏独立文档（md+md / pdf+md / 图片+md / 图片+pdf 任意组合），两侧各自多标签、独立保存与翻译",
+      "点击任一分栏即聚焦，目录树/URL 导入/上传的新文档进入聚焦栏；聚焦栏有蓝色描边提示；手机端分屏按钮隐藏（保持单栏）",
+    ],
+  },
   {
     version: "1.8.0",
     date: "2026-10-27",

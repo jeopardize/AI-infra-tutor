@@ -225,6 +225,9 @@ export interface Dict {
     importing: string;
     importOk: (name: string) => string;
     importFailed: (e: string) => string;
+    splitBtn: string;
+    splitHint: string;
+    splitPlaceholder: string;
   };
 
   // -------- DocDrawer --------
@@ -575,6 +578,9 @@ const zh: Dict = {
     importing: "正在下载到服务器…（视网速可能需要数十秒）",
     importOk: (name) => `已导入：${name}`,
     importFailed: (e) => `导入失败：${e}`,
+    splitBtn: "分屏",
+    splitHint: "分屏：左右两栏对照阅读（md/pdf/图片任意组合），点击分栏切换聚焦，目录树打开的文件进入聚焦栏",
+    splitPlaceholder: "分屏右侧：点击此处聚焦，再在目录树点击文件打开到这一栏（支持 md / pdf / 图片）",
   },
   docDrawer: {
     headerLabel: (dir) => `📚 我的笔记 · ${dir || ""}`,
@@ -937,6 +943,9 @@ const en: Dict = {
     importing: "Downloading to server… (may take up to a minute)",
     importOk: (name) => `Imported: ${name}`,
     importFailed: (e) => `Import failed: ${e}`,
+    splitBtn: "Split",
+    splitHint: "Split view: side-by-side reading (md/pdf/images in any combo); click a pane to focus it, files opened from the tree go to the focused pane",
+    splitPlaceholder: "Split right pane: click here to focus, then open a file from the tree into this pane (md / pdf / images)",
   },
   docDrawer: {
     headerLabel: (dir) => `📚 My Notes · ${dir || ""}`,

@@ -14,6 +14,7 @@ import {
   Pencil,
   PanelLeft,
   RefreshCw,
+  Columns2,
   X,
 } from "lucide-react";
 import { DocPane } from "@/components/doc/DocPane";
@@ -68,6 +69,10 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [openPath, setOpenPath] = useState<string | null>(null);
+  // 分屏：右侧独立文档栏（md+md / pdf+md / 图片+md 等任意组合）
+  const [rightPath, setRightPath] = useState<string | null>(null);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [focused, setFocused] = useState<"left" | "right">("left");
   const [pulling, setPulling] = useState(false);
   // 左右分栏：左侧目录树宽度/展开状态（反馈：页面本身为左右界面，目录可伸缩可调宽）
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
@@ -109,6 +114,12 @@ export default function LibraryPage() {
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+  }
+
+  /** 打开文档到当前聚焦的分栏（未分屏时固定左侧） */
+  function openDoc(p: string) {
+    if (splitOpen && focused === "right") setRightPath(p);
+    else setOpenPath(p);
   }
 
   const load = useCallback(() => {
@@ -191,6 +202,7 @@ export default function LibraryPage() {
     }
     // 若抽屉正打开被移动的文档，先关闭（路径已失效）
     setOpenPath((p) => (p && (p === srcPath || p.startsWith(`${srcPath}/`)) ? null : p));
+    setRightPath((p) => (p && (p === srcPath || p.startsWith(`${srcPath}/`)) ? null : p));
     load();
   }
 
@@ -207,7 +219,7 @@ export default function LibraryPage() {
       return;
     }
     load();
-    setOpenPath(json.path);
+    openDoc(json.path);
   }
 
   // 绑定刷新快捷键：Ctrl/Cmd + R
@@ -247,7 +259,7 @@ export default function LibraryPage() {
       return;
     }
     load();
-    setOpenPath(fullPath); // 自动打开编辑
+    openDoc(fullPath); // 自动打开编辑
   }
 
   async function createDir(parentPath: string) {
@@ -292,7 +304,7 @@ export default function LibraryPage() {
       setImportUrl("");
       setImportName("");
       load();
-      setOpenPath(json.path);
+      openDoc(json.path);
     } catch (e) {
       setImportMsg({ kind: "err", text: t.library.importFailed((e as Error).message) });
     } finally {
@@ -318,6 +330,18 @@ export default function LibraryPage() {
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => {
+              setSplitOpen((v) => {
+                if (v) setRightPath(null);
+                return !v;
+              });
+            }}
+            title={t.library.splitHint}
+            className="hidden md:inline-flex px-2.5 py-1.5 text-xs rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+          >
+            <Columns2 className="w-3.5 h-3.5" /> {t.library.splitBtn}
+          </button>
           <input
             ref={uploadInputRef}
             type="file"
@@ -400,7 +424,12 @@ export default function LibraryPage() {
                   node={data.tree}
                   depth={0}
                   onOpen={(p) => {
-                    setOpenPath(p);
+                    if (splitOpen) {
+                      if (focused === "left") setOpenPath(p);
+                      else setRightPath(p);
+                    } else {
+                      setOpenPath(p);
+                    }
                     if (window.innerWidth < 640) setTreeOpen(false);
                   }}
                   onNewFile={createFile}
@@ -420,19 +449,51 @@ export default function LibraryPage() {
           </div>
         )}
 
-        {/* 右：文档内容（多标签） */}
-        <div className="flex-1 min-w-0 h-full">
-          <DocPane
-            docPath={openPath}
-            onClose={() => setOpenPath(null)}
-            onSaved={() => load()}
-            placeholder={
-              <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-400 text-sm">
-                <FileText className="w-8 h-8" />
-                从左侧目录选择一个文档打开
-              </div>
+        {/* 右：文档内容（分屏时左右两栏，点击分栏切换聚焦；目录树新打开的文件进入聚焦栏） */}
+        <div className={"flex-1 min-w-0 h-full flex min-h-0 " + (splitOpen ? "flex-col md:flex-row" : "")}>
+          <div
+            onPointerDown={() => setFocused("left")}
+            className={
+              "min-w-0 min-h-0 " +
+              (splitOpen
+                ? "flex-1 md:w-1/2 md:border-r border-zinc-200 dark:border-zinc-800" +
+                  (focused === "left" ? " ring-1 ring-inset ring-blue-500/40" : "")
+                : "flex-1")
             }
-          />
+          >
+            <DocPane
+              docPath={openPath}
+              onClose={() => setOpenPath(null)}
+              onSaved={() => load()}
+              placeholder={
+                <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-400 text-sm">
+                  <FileText className="w-8 h-8" />
+                  从左侧目录选择一个文档打开
+                </div>
+              }
+            />
+          </div>
+          {splitOpen && (
+            <div
+              onPointerDown={() => setFocused("right")}
+              className={
+                "min-w-0 min-h-0 flex-1 md:w-1/2" +
+                (focused === "right" ? " ring-1 ring-inset ring-blue-500/40" : "")
+              }
+            >
+              <DocPane
+                docPath={rightPath}
+                onClose={() => setRightPath(null)}
+                onSaved={() => load()}
+                placeholder={
+                  <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-400 text-sm px-6 text-center">
+                    <Columns2 className="w-8 h-8" />
+                    {t.library.splitPlaceholder}
+                  </div>
+                }
+              />
+            </div>
+          )}
         </div>
       </div>
 
