@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.9.0";
+export const APP_VERSION = "1.9.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.9.1",
+    date: "2026-10-28",
+    items: [
+      "分屏比例可拖动调节：两栏之间的分隔条按住左右拖动（20%–80%，记忆上次设置），替代固定 50/50",
+    ],
+  },
   {
     version: "1.9.0",
     date: "2026-10-28",

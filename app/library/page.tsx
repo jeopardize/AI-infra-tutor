@@ -46,6 +46,7 @@ function extractPrefixNum(name: string): { num: number | null; rest: string } {
 }
 
 const TREE_WIDTH_KEY = "doc-library-tree-width";
+const SPLIT_RATIO_KEY = "doc-library-split-ratio";
 const TREE_DEFAULT_WIDTH = 280;
 
 function sortNodes(nodes: DocNode[]): DocNode[] {
@@ -73,6 +74,9 @@ export default function LibraryPage() {
   const [rightPath, setRightPath] = useState<string | null>(null);
   const [splitOpen, setSplitOpen] = useState(false);
   const [focused, setFocused] = useState<"left" | "right">("left");
+  // 分屏比例（左栏宽度百分比，可拖动调节）
+  const [splitRatio, setSplitRatio] = useState(50);
+  const splitBoxRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(false);
   // 左右分栏：左侧目录树宽度/展开状态（反馈：页面本身为左右界面，目录可伸缩可调宽）
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
@@ -90,7 +94,33 @@ export default function LibraryPage() {
     const w = Number(localStorage.getItem(TREE_WIDTH_KEY));
     if (Number.isFinite(w) && w >= 160) setTreeWidth(w);
     setTreeOpen(window.innerWidth >= 640);
+    const r = Number(localStorage.getItem(SPLIT_RATIO_KEY));
+    if (Number.isFinite(r) && r >= 20 && r <= 80) setSplitRatio(r);
   }, []);
+
+  // ---------- 分屏比例拖动（两栏之间分隔条） ----------
+  function startSplitResize(e: ReactPointerEvent) {
+    e.preventDefault();
+    const box = splitBoxRef.current;
+    if (!box) return;
+    const boxLeft = box.getBoundingClientRect().left;
+    const boxW = box.clientWidth;
+    let lastW = (splitRatio / 100) * boxW;
+    function onMove(ev: globalThis.PointerEvent) {
+      lastW = Math.min(boxW * 0.8, Math.max(boxW * 0.2, ev.clientX - boxLeft));
+      setSplitRatio(Math.round((lastW / boxW) * 100));
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setSplitRatio((r) => {
+        localStorage.setItem(SPLIT_RATIO_KEY, String(r));
+        return r;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 
   // ---------- 目录树宽度拖动（右缘分隔条） ----------
   function startTreeResize(e: ReactPointerEvent) {
@@ -450,13 +480,17 @@ export default function LibraryPage() {
         )}
 
         {/* 右：文档内容（分屏时左右两栏，点击分栏切换聚焦；目录树新打开的文件进入聚焦栏） */}
-        <div className={"flex-1 min-w-0 h-full flex min-h-0 " + (splitOpen ? "flex-col md:flex-row" : "")}>
+        <div
+          ref={splitBoxRef}
+          className={"flex-1 min-w-0 h-full flex min-h-0 " + (splitOpen ? "flex-col md:flex-row" : "")}
+          style={splitOpen ? ({ "--split": `${splitRatio}%` } as React.CSSProperties) : undefined}
+        >
           <div
             onPointerDown={() => setFocused("left")}
             className={
               "min-w-0 min-h-0 " +
               (splitOpen
-                ? "flex-1 md:w-1/2 md:border-r border-zinc-200 dark:border-zinc-800" +
+                ? "flex-1 md:flex-none md:[width:var(--split)]" +
                   (focused === "left" ? " ring-1 ring-inset ring-blue-500/40" : "")
                 : "flex-1")
             }
@@ -474,25 +508,33 @@ export default function LibraryPage() {
             />
           </div>
           {splitOpen && (
-            <div
-              onPointerDown={() => setFocused("right")}
-              className={
-                "min-w-0 min-h-0 flex-1 md:w-1/2" +
-                (focused === "right" ? " ring-1 ring-inset ring-blue-500/40" : "")
-              }
-            >
-              <DocPane
-                docPath={rightPath}
-                onClose={() => setRightPath(null)}
-                onSaved={() => load()}
-                placeholder={
-                  <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-400 text-sm px-6 text-center">
-                    <Columns2 className="w-8 h-8" />
-                    {t.library.splitPlaceholder}
-                  </div>
-                }
+            <>
+              {/* 分隔条：拖动调整两栏比例 */}
+              <div
+                onPointerDown={startSplitResize}
+                className="hidden md:block w-1.5 shrink-0 cursor-ew-resize bg-zinc-200 dark:bg-zinc-800 hover:bg-blue-500/40"
+                title="拖动调整两栏比例"
               />
-            </div>
+              <div
+                onPointerDown={() => setFocused("right")}
+                className={
+                  "min-w-0 min-h-0 flex-1 md:flex-none md:[width:calc(100%-var(--split)-6px)]" +
+                  (focused === "right" ? " ring-1 ring-inset ring-blue-500/40" : "")
+                }
+              >
+                <DocPane
+                  docPath={rightPath}
+                  onClose={() => setRightPath(null)}
+                  onSaved={() => load()}
+                  placeholder={
+                    <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-400 text-sm px-6 text-center">
+                      <Columns2 className="w-8 h-8" />
+                      {t.library.splitPlaceholder}
+                    </div>
+                  }
+                />
+              </div>
+            </>
           )}
         </div>
       </div>
