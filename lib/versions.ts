@@ -4,11 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-<<<<<<< Updated upstream
-export const APP_VERSION = "1.10.1";
-=======
 export const APP_VERSION = "1.11.0";
->>>>>>> Stashed changes
 
 export interface ChangelogEntry {
   version: string;
@@ -19,12 +15,6 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-<<<<<<< Updated upstream
-    version: "1.10.1",
-    date: "2026-10-28",
-    items: [
-      "chore: remove stray test file",
-=======
     version: "1.11.0",
     date: "2026-10-28",
     items: [
@@ -32,7 +22,13 @@ export const CHANGELOG: ChangelogEntry[] = [
       "视口外页面自动卸载：长时间浏览超大 PDF 不再越翻越卡（内存占用受控）",
       "扫描版 PDF 支持标注：这类 PDF 没有文字层、无法选中文字，页面顶部会提示「按住鼠标左键拖出矩形即可高亮/下划线区域」，拖拽框选后照常选择颜色、添加批注",
       "PDF 目录跳转：工具条新增「目录」面板，按 PDF 内置章节大纲展示，点击跳转到对应页",
->>>>>>> Stashed changes
+    ],
+  },
+  {
+    version: "1.10.1",
+    date: "2026-10-28",
+    items: [
+      "chore: remove stray test file",
     ],
   },
   {
