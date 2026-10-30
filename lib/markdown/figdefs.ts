@@ -23,7 +23,8 @@
 import type { Root, RootContent, Element, ElementContent } from "hast";
 
 const CAPTION_RE = /^[:：]?\s*(.*?)[ \t]*\{#(tbl|eq):([\w-]+)\}\s*$/;
-const REF_RE = /\[@(tbl|eq):([\w-]+)\]/g;
+/** 引用同时接受 [@tbl:id] 与 {@tbl:id}（图片 [@fig:id] 由 figrefs.ts 字符串层处理） */
+const REF_RE = /(?:\[@|\{@)(tbl|eq):([\w-]+)(?:\]|\})/g;
 
 const KIND_LABEL: Record<string, string> = { tbl: "表", eq: "式" };
 

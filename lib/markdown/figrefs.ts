@@ -15,7 +15,8 @@
 
 const FENCE_RE = /```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g;
 const IMG_DEF_RE = /!\[([^\]]*)\]\(([^)\s]+)\)\s*\{#fig:([\w-]+)\}/g;
-const REF_RE = /\[@fig:([\w-]+)\]/g;
+/** 引用同时接受 [@fig:id] 与 {@fig:id}（反馈：用户写花括号也能识别；定义标记为 {#fig:id} 不受影响） */
+const REF_RE = /(?:\[@|\{@)fig:([\w-]+)(?:\]|\})/g;
 const DEF_RE = /\{#fig:([\w-]+)\}/g;
 
 interface Segment {
@@ -52,10 +53,10 @@ export function preprocessFigRefs(md: string): string {
   // 2) 引用替换 & 图片定义改写
   for (const seg of segments) {
     if (seg.fenced) continue;
-    seg.text = seg.text.replace(REF_RE, (whole, id: string) =>
+    seg.text = seg.text.replace(REF_RE, (_w, id: string) =>
       num.has(id)
         ? `[图 ${num.get(id)}](#figdef-${id})`
-        : `⚠️${whole}`,
+        : `⚠️${_w}`,
     );
     seg.text = seg.text.replace(
       IMG_DEF_RE,

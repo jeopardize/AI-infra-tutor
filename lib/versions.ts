@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.11.0";
+export const APP_VERSION = "1.12.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.12.0",
+    date: "2026-10-30",
+    items: [
+      "修复：v1.11.0 发版包含合并冲突标记导致部分部署构建失败、批注保存失败的问题（现已正常）",
+      "交叉引用语法宽容：正文引用同时支持 [@fig:id] 与 {@fig:id}（花括号、方括号都识别；定义 {#fig:id} 不变）",
+      "编辑器修复：中文输入法组合中的回车不再被劫持（此前可能光标跳到文档底部）；Enter 续写/Tab 缩进后的光标定位改为渲染后统一应用，更加可靠",
+      "实时预览点击定位：点击右侧预览中的段落/标题/列表项，左边编辑器光标自动跳到对应行并选中该行",
+    ],
+  },
   {
     version: "1.11.0",
     date: "2026-10-28",

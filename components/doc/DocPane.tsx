@@ -310,6 +310,8 @@ export function DocPane({
   const t = useT();
   const { lang } = useLang();
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  /** 键盘编辑（Enter 续写/Tab 缩进）后的光标位置：等 draft 重渲染后统一生效（比 rAF 可靠，避免光标跳到文档末尾） */
+  const pendingCaretRef = useRef<{ pos: number; sel: number } | null>(null);
   const [codeLang, setCodeLang] = useState("js");
   const {
     tabs,
@@ -322,6 +324,39 @@ export function DocPane({
     save,
     closeTab,
   } = useDocTabs({ docPath, onClose, onSaved });
+
+  useEffect(() => {
+    const p = pendingCaretRef.current;
+    if (!p || !draftRef.current) return;
+    pendingCaretRef.current = null;
+    const ta = draftRef.current;
+    ta.focus({ preventScroll: true });
+    try {
+      ta.setSelectionRange(p.pos, p.sel);
+    } catch {
+      /* 光标越界时忽略 */
+    }
+  }, [activeTab?.draft]);
+
+  /** 实时预览点击块级元素 → 编辑器光标定位到对应行并选中该行（反馈：预览点击定位编辑） */
+  const jumpToEditLine = useCallback((line: number) => {
+    const ta = draftRef.current;
+    if (!ta) return;
+    const lines = ta.value.split("\n");
+    let off = 0;
+    for (let i = 0; i < Math.min(line - 1, lines.length); i++) off += (lines[i]?.length ?? 0) + 1;
+    const row = Math.max(0, Math.min(line - 1, lines.length - 1));
+    const sel = Math.min(off + (lines[row]?.length ?? 0), ta.value.length);
+    ta.focus({ preventScroll: true });
+    try {
+      ta.setSelectionRange(off, sel);
+    } catch {
+      /* ignore */
+    }
+    const lh = parseFloat(getComputedStyle(ta).lineHeight || "20") || 20;
+    const target = row * lh - ta.clientHeight / 3;
+    ta.scrollTop = Math.max(0, Math.min(target, ta.scrollHeight - ta.clientHeight));
+  }, []);
 
   /** 网页翻译：预览模式下整篇翻译（代码块/链接/行内代码保持原样），缓存到标签页 */
   const translateDoc = useCallback(async () => {
@@ -552,6 +587,8 @@ export function DocPane({
 
   function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (!activeTab) return;
+    // 输入法组合中的 Enter/Tab（候选确认等）不劫持（反馈：markdown 中文输入回车后光标乱跳到底部）
+    if ((e.nativeEvent as KeyboardEvent).isComposing || e.keyCode === 229) return;
     const ta = e.currentTarget;
     const value = ta.value;
     const s = ta.selectionStart;
@@ -587,10 +624,7 @@ export function DocPane({
           e.preventDefault();
           const next = value.slice(0, lineStart) + value.slice(s);
           updateTab(activeTab.path, { draft: next });
-          requestAnimationFrame(() => {
-            ta.focus();
-            ta.setSelectionRange(lineStart, lineStart);
-          });
+          pendingCaretRef.current = { pos: lineStart, sel: lineStart };
           return;
         }
         // 有内容 → 新行续写前缀（引用原样续；有序列表递增编号）
@@ -604,10 +638,7 @@ export function DocPane({
         const next = value.slice(0, s) + "\n" + cont + value.slice(s);
         const caret = s + 1 + cont.length;
         updateTab(activeTab.path, { draft: next });
-        requestAnimationFrame(() => {
-          ta.focus();
-          ta.setSelectionRange(caret, caret);
-        });
+        pendingCaretRef.current = { pos: caret, sel: caret };
         return;
       }
       // 无前缀 → 默认行为
@@ -642,13 +673,10 @@ export function DocPane({
       const next =
         value.slice(0, lineStart) + processed.join("\n") + value.slice(segEnd);
       updateTab(activeTab.path, { draft: next });
-      requestAnimationFrame(() => {
-        ta.focus();
-        ta.setSelectionRange(
-          Math.max(lineStart, s + firstDelta),
-          Math.max(lineStart, end + delta),
-        );
-      });
+      pendingCaretRef.current = {
+        pos: Math.max(lineStart, s + firstDelta),
+        sel: Math.max(lineStart, end + delta),
+      };
       return;
     }
 
@@ -660,10 +688,7 @@ export function DocPane({
       const next = value.slice(0, lineStart) + value.slice(lineStart + m[1].length);
       const caret = Math.max(lineStart, s - m[1].length);
       updateTab(activeTab.path, { draft: next });
-      requestAnimationFrame(() => {
-        ta.focus();
-        ta.setSelectionRange(caret, caret);
-      });
+      pendingCaretRef.current = { pos: caret, sel: caret };
       return;
     }
 
@@ -672,10 +697,7 @@ export function DocPane({
     const next = value.slice(0, s) + ins + value.slice(end);
     const caret = s + ins.length;
     updateTab(activeTab.path, { draft: next });
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(caret, caret);
-    });
+    pendingCaretRef.current = { pos: caret, sel: caret };
   }
 
   // ---------- 编辑器：粘贴图片 → 上传到 <笔记目录>/images/ 并插入引用 ----------
@@ -1072,7 +1094,7 @@ export function DocPane({
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
                       rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
-                      components={buildMarkdownComponents(rewriteAsset)}
+                      components={buildMarkdownComponents(rewriteAsset, jumpToEditLine)}
                     >
                       {preprocessFigRefs(previewDraft)}
                     </ReactMarkdown>
@@ -1123,18 +1145,43 @@ export function DocPane({
 /** 构建渲染组件：给每个标题按出现顺序加 md-h-N 锚点（与大纲一一对应） */
 function buildMarkdownComponents(
   rewriteAsset: (src: string) => string,
+  /** 传入时：实时预览里点击块级元素 → 跳到左侧编辑器对应行（反馈：预览点击定位编辑） */
+  jumpToEdit?: (line: number) => void,
 ): Components {
   let headingIdx = -1;
   const heading = (Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") =>
-    function Heading({ children }: { children?: React.ReactNode }) {
+    function Heading({ children, ...rest }: { children?: React.ReactNode; node?: unknown }) {
       headingIdx += 1;
+      const line = (rest as { node?: { position?: { start?: { line?: number } } } }).node?.position?.start?.line ?? null;
       return (
-        <Tag id={`md-h-${headingIdx}`} className="scroll-mt-2">
+        <Tag
+          id={`md-h-${headingIdx}`}
+          className="scroll-mt-2"
+          onClick={jumpToEdit && line ? () => jumpToEdit(line) : undefined}
+          style={jumpToEdit && line ? { cursor: "pointer" } : undefined}
+        >
           {children}
         </Tag>
       );
     };
-  return {
+  /** 块级元素（p/li）包装：点击 → 跳编辑器对应行 */
+  const jumpBlock = <P extends { node?: unknown }>(Tag: "p" | "li") => {
+    const Comp = function JumpBlock(props: P & { children?: React.ReactNode }) {
+      const { node, ...rest } = props as P & { node?: { position?: { start?: { line?: number } } }; children?: React.ReactNode };
+      const line = node?.position?.start?.line ?? null;
+      return (
+        <Tag
+          {...(rest as unknown as Record<string, unknown>)}
+          onClick={jumpToEdit && line ? () => jumpToEdit(line) : undefined}
+          style={jumpToEdit && line ? { cursor: "pointer" } : undefined}
+        >
+          {(props as { children?: React.ReactNode }).children}
+        </Tag>
+      );
+    };
+    return Comp;
+  };
+  const components: Components = {
     ...markdownCodeComponents,
     h1: heading("h1"),
     h2: heading("h2"),
@@ -1170,6 +1217,7 @@ function buildMarkdownComponents(
       <a
         href={href}
         {...(href?.startsWith("#") ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+        onClick={jumpToEdit ? (e) => e.stopPropagation() : undefined}
         {...rest}
       >
         {children}
@@ -1178,5 +1226,12 @@ function buildMarkdownComponents(
         )}
       </a>
     ),
+  };
+  if (!jumpToEdit) return components;
+  return {
+    ...components,
+    // 点击预览块级元素跳到编辑器对应行
+    p: jumpBlock("p"),
+    li: jumpBlock("li"),
   };
 }
