@@ -266,6 +266,10 @@ export interface Dict {
     pdfFailed: (e: string) => string;
     pdfRetry: string;
     pdfAnnotationList: string;
+    pdfOutline: string;
+    pdfNoOutline: string;
+    pdfRectQuote: string;
+    pdfScanHint: string;
     pdfSaved: string;
     pdfSaveFailed: string;
     pdfClearSelection: string;
@@ -627,6 +631,10 @@ const zh: Dict = {
     pdfFailed: (e) => `PDF 加载失败：${e}`,
     pdfRetry: "重试",
     pdfAnnotationList: "标注",
+    pdfOutline: "目录",
+    pdfNoOutline: "该 PDF 没有内置目录。",
+    pdfRectQuote: "框选区域",
+    pdfScanHint: "扫描版 PDF：按住鼠标左键拖出矩形即可高亮/下划线区域",
     pdfSaved: "标注已保存",
     pdfSaveFailed: "标注保存失败",
     pdfClearSelection: "清除当前选择",
@@ -1004,6 +1012,10 @@ const en: Dict = {
     pdfFailed: (e) => `Failed to load PDF: ${e}`,
     pdfRetry: "Retry",
     pdfAnnotationList: "Annotations",
+    pdfOutline: "Outline",
+    pdfNoOutline: "This PDF has no embedded outline.",
+    pdfRectQuote: "Selected area",
+    pdfScanHint: "Scanned PDF: drag with the left mouse button to highlight/underline an area",
     pdfSaved: "Annotations saved",
     pdfSaveFailed: "Failed to save annotations",
     pdfClearSelection: "Clear current selection",

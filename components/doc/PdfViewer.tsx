@@ -13,6 +13,7 @@ import {
   Eraser,
   FileText,
   List,
+  ListTree,
   Loader2,
   Save,
   X,
@@ -138,10 +139,17 @@ function PdfPageContent({
   /** 点击命中标注 → 打开编辑气泡；点空白 → 关闭 */
   onToggleAnnotation: (a: PdfAnnotation | null, x: number, y: number) => void;
 }) {
+  const { t } = useLang();
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const [rendering, setRendering] = useState(true);
+  /** 扫描版页面（无文字层）：没有可选文字 → 改为拖拽框选矩形高亮（反馈：批注无法使用） */
+  const [hasText, setHasText] = useState<boolean | null>(null);
+  const [dragRect, setDragRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const dragStartRef = useRef<{ px: number; py: number; bx: number; by: number; bw: number; bh: number } | null>(null);
+  /** 拖拽刚结束 → 吞掉紧随的 click（避免框选后的单击又触发标注气泡命中检测） */
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +180,7 @@ function PdfPageContent({
           tl.innerHTML = "";
           const tc = await page.getTextContent();
           if (cancelled) return;
+          setHasText(tc.items.some((it: { str?: string }) => it.str && it.str.trim() !== ""));
           tl.style.setProperty("--scale-factor", String(width / base.width));
           if (typeof pdfjs.renderTextLayer === "function") {
             textTask = pdfjs.renderTextLayer({
@@ -220,9 +229,45 @@ function PdfPageContent({
   }
 
   function handleMouseUp() {
+    // 扫描版页面走拖拽框选（onRectDragEnd），不做文字选区
+    if (hasText === false) return;
     // 仅刷新待选区；无选择时清除（不高亮、不清除选区显示）
     const rects = selectionRects();
     onCreate(rects ? { rects, quote: window.getSelection()!.toString().trim(), x: 0, y: 0 } : null);
+  }
+
+  /** 扫描版页面（无文字层）：拖拽框选矩形 → 待选区 → 浮动条选高亮/下划线 */
+  function onRectDragStart(e: React.MouseEvent) {
+    if (e.button !== 0 || hasText !== false) return;
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    e.preventDefault();
+    dragStartRef.current = { px: e.clientX, py: e.clientY, bx: box.left, by: box.top, bw: box.width, bh: box.height };
+    suppressClickRef.current = false;
+  }
+  function onRectDragMove(e: React.MouseEvent) {
+    const st = dragStartRef.current;
+    if (!st) return;
+    const x1 = Math.min(st.px, e.clientX);
+    const x2 = Math.max(st.px, e.clientX);
+    const y1 = Math.min(st.py, e.clientY);
+    const y2 = Math.max(st.py, e.clientY);
+    setDragRect({
+      x: (x1 - st.bx) / st.bw,
+      y: (y1 - st.by) / st.bh,
+      w: (x2 - x1) / st.bw,
+      h: (y2 - y1) / st.bh,
+    });
+  }
+  function onRectDragEnd(e: React.MouseEvent) {
+    const st = dragStartRef.current;
+    dragStartRef.current = null;
+    const rect = dragRect;
+    setDragRect(null);
+    if (!st || !rect) return;
+    if (rect.w * st.bw < 8 || rect.h * st.bh < 8) return; // 轻点不算框选
+    suppressClickRef.current = true;
+    onCreate({ rects: [rect], quote: t.docDrawer.pdfRectQuote, x: e.clientX, y: e.clientY });
   }
 
   /** 右键：有待选区时弹出「高亮/下划线」菜单（拦截浏览器默认菜单） */
@@ -263,11 +308,38 @@ function PdfPageContent({
       style={{ width }}
       onMouseUp={handleMouseUp}
       onContextMenu={handleContextMenu}
-      onClick={handleClick}
+      onClick={(e) => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        handleClick(e);
+      }}
+      onMouseDown={onRectDragStart}
+      onMouseMove={onRectDragMove}
+      onMouseUpCapture={onRectDragEnd}
     >
       <canvas ref={canvasRef} className="block" />
       {/* 文本层（选择用） */}
       <div ref={textRef} className="pdf-text-layer" />
+      {/* 扫描版：拖拽框选预览矩形 */}
+      {dragRect && hasText === false && (
+        <div
+          className="absolute z-30 rounded-[2px] border-2 border-blue-500 bg-blue-500/25 pointer-events-none"
+          style={{
+            left: `${dragRect.x * 100}%`,
+            top: `${dragRect.y * 100}%`,
+            width: `${dragRect.w * 100}%`,
+            height: `${dragRect.h * 100}%`,
+          }}
+        />
+      )}
+      {/* 扫描版提示（一次性显示在该页顶部） */}
+      {hasText === false && (
+        <div className="absolute left-0 right-0 top-0 z-10 px-3 py-1 text-[10px] text-zinc-400 bg-white/80 dark:bg-zinc-950/70 text-center pointer-events-none">
+          {t.docDrawer.pdfScanHint}
+        </div>
+      )}
       {/* 标注层（纯视觉，点击命中由 handleClick 处理，不挡文字选择） */}
       <div className="absolute inset-0 z-20 pointer-events-none">
         {pageAnns.map((a) =>
@@ -309,6 +381,36 @@ function PdfPageContent({
 
 /* ---------- 主查看器 ---------- */
 
+/** PDF 目录树节点（递归渲染章节） */
+function OutlineNode({
+  item,
+  depth,
+  pathId,
+  onJump,
+}: {
+  item: { title?: string; dest: unknown; items?: unknown[] };
+  depth: number;
+  pathId: string;
+  onJump: (item: { dest: unknown; title?: string }) => void;
+}) {
+  const kids = Array.isArray(item.items) ? item.items : [];
+  return (
+    <div>
+      <button
+        onClick={() => onJump(item)}
+        className="w-full text-left py-1 pr-2 text-sm rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 truncate"
+        style={{ paddingLeft: 8 + depth * 12 }}
+        title={item.title ?? ""}
+      >
+        {item.title || "—"}
+      </button>
+      {kids.map((c, i) => (
+        <OutlineNode key={`${pathId}-${i}`} item={c as any} depth={depth + 1} onJump={onJump} pathId={`${pathId}-${i}`} />
+      ))}
+    </div>
+  );
+}
+
 export function PdfViewer({ path }: { path: string }) {
   const { t, lang } = useLang();
   const [pdfjs, setPdfjs] = useState<any>(null);
@@ -323,6 +425,10 @@ export function PdfViewer({ path }: { path: string }) {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "ok" | "err">("idle");
   const [listOpen, setListOpen] = useState(false);
+  /** PDF 内置目录（getOutline），面板展示并可跳转（反馈：PDF 需要目录跳转） */
+  const [outline, setOutline] = useState<any[] | null>(null);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const outlinePageCache = useRef<Map<string, number>>(new Map());
   const [pop, setPop] = useState<{ ann: PdfAnnotation; x: number; y: number } | null>(null);
   /** 待选区：已框选文字、等右键/浮动条选择「高亮/下划线」 */
   const [pending, setPending] = useState<{
@@ -354,6 +460,10 @@ export function PdfViewer({ path }: { path: string }) {
         if (cancelled) return;
         setDoc(d);
         setNumPages(d.numPages);
+        // 目录：加载失败不应影响主流程
+        setOutline(null);
+        outlinePageCache.current = new Map();
+        d.getOutline().then((o: any[] | null) => setOutline(o)).catch(() => setOutline(null));
       } catch (e) {
         if (!cancelled) setLoadErr((e as Error).message);
       }
@@ -446,14 +556,21 @@ export function PdfViewer({ path }: { path: string }) {
       (entries) => {
         setVisible((prev) => {
           const next = new Set(prev);
+          let changed = false;
           for (const en of entries) {
             const p = Number((en.target as HTMLElement).dataset.page);
-            if (en.isIntersecting) next.add(p);
+            if (en.isIntersecting) {
+              if (!next.has(p)) { next.add(p); changed = true; }
+            } else if (next.has(p)) {
+              // 视口外（含 800px 缓冲外）卸载页面，超大 PDF 不会内存/渲染堆积
+              next.delete(p);
+              changed = true;
+            }
           }
-          return next;
+          return changed ? next : prev;
         });
       },
-      { root, rootMargin: "800px 0px" },
+      { root, rootMargin: "1200px 0px" },
     );
     Object.values(pageEls.current).forEach((el) => el && io.observe(el));
     return () => io.disconnect();
@@ -550,6 +667,34 @@ export function PdfViewer({ path }: { path: string }) {
   const deleteAnnotation = (id: string) =>
     updateAnns((annsRef.current ?? []).filter((a) => a.id !== id));
 
+  /** 目录条目 → 页码（dest 可能是命名串或 [ref] 数组；带缓存） */
+  async function outlineTargetPage(dest: unknown): Promise<number | null> {
+    if (dest == null) return null;
+    const key = typeof dest === "string" ? `s:${dest}` : JSON.stringify(dest);
+    const cached = outlinePageCache.current.get(key);
+    if (cached) return cached;
+    try {
+      const arr = typeof dest === "string" ? await doc.getDestination(dest) : dest;
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      const idx = await doc.getPageIndex(arr[0]);
+      if (idx >= 0) {
+        outlinePageCache.current.set(key, idx + 1);
+        return idx + 1;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  const jumpOutline = async (item: { dest: unknown; title?: string }) => {
+    const p = await outlineTargetPage(item.dest);
+    if (p) {
+      setPage(p);
+      setOutlineOpen(false);
+    }
+  };
+
   if (loadErr) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-sm text-zinc-500">
@@ -613,7 +758,16 @@ export function PdfViewer({ path }: { path: string }) {
           <Eraser className="w-3.5 h-3.5" />
         </button>
         <span className="w-px h-4 bg-zinc-300 dark:bg-zinc-700 mx-0.5 shrink-0" />
-        <button onClick={() => setListOpen(true)}
+        <button
+          onClick={() => { setOutlineOpen(true); setListOpen(false); }}
+          disabled={!outline?.length}
+          className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex items-center gap-1 shrink-0 disabled:opacity-30"
+          title={t.docDrawer.pdfOutline}
+        >
+          <ListTree className="w-3.5 h-3.5" />
+          {t.docDrawer.pdfOutline}
+        </button>
+        <button onClick={() => { setListOpen(true); setOutlineOpen(false); }}
           className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex items-center gap-1 shrink-0">
           <List className="w-3.5 h-3.5" />
           {t.docDrawer.pdfAnnotationList}
@@ -787,6 +941,32 @@ export function PdfViewer({ path }: { path: string }) {
             className="w-full h-16 text-xs p-1.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 resize-none outline-none focus:border-blue-500"
           />
         </div>
+      )}
+
+      {/* PDF 目录（章节大纲）面板 */}
+      {outlineOpen && (
+        <>
+          <div className="absolute inset-0 z-40 bg-black/20" onClick={() => setOutlineOpen(false)} />
+          <div className="absolute right-0 top-0 bottom-0 z-50 w-72 max-w-full bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-xl flex flex-col">
+            <div className="flex items-center justify-between px-3 h-10 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium shrink-0">
+              <span className="flex items-center gap-1.5">
+                <ListTree className="w-3.5 h-3.5" />
+                {t.docDrawer.pdfOutline}
+              </span>
+              <button onClick={() => setOutlineOpen(false)} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-2">
+              {(outline ?? []).length === 0 && (
+                <div className="text-xs text-zinc-400 text-center py-6">{t.docDrawer.pdfNoOutline}</div>
+              )}
+              {(outline ?? []).map((it, i) => (
+                <OutlineNode key={`o-${i}`} item={it} pathId={`o-${i}`} depth={0} onJump={jumpOutline} />
+              ))}
+            </div>
+          </div>
+        </>
       )}
 
       {/* 标注列表面板 */}
