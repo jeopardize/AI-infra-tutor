@@ -460,6 +460,18 @@ export function PdfViewer({ path }: { path: string }) {
         if (cancelled) return;
         setDoc(d);
         setNumPages(d.numPages);
+        // 恢复上次阅读位置（页码/缩放）
+        try {
+          const saved = JSON.parse(localStorage.getItem(`pdf-pos:${path}`) ?? "null") as
+            | { page?: number; zoom?: number }
+            | null;
+          if (saved?.zoom && saved.zoom >= 0.5 && saved.zoom <= 2.5) setZoom(saved.zoom);
+          if (saved?.page && saved.page > 1) {
+            setTimeout(() => setPage(Math.min(saved.page!, d.numPages)), 80);
+          }
+        } catch {
+          /* ignore */
+        }
         // 目录：加载失败不应影响主流程
         setOutline(null);
         outlinePageCache.current = new Map();
@@ -576,14 +588,25 @@ export function PdfViewer({ path }: { path: string }) {
     return () => io.disconnect();
   }, [numPages, doc]);
 
+  const [curPage, setCurPage] = useState(1);
+  const curPageRef = useRef(1);
+
+  /* 阅读位置记忆：页码/缩放变化时落盘（反馈：切页面回来应维持之前的状态） */
+  useEffect(() => {
+    if (!doc) return;
+    try {
+      localStorage.setItem(`pdf-pos:${path}`, JSON.stringify({ page: curPage, zoom }));
+    } catch {
+      /* ignore */
+    }
+  }, [curPage, zoom, doc, path]);
+
   const setPage = (p: number) => {
     curPageRef.current = p;
     setCurPage(p);
     const el = pageEls.current[p];
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const [curPage, setCurPage] = useState(1);
-  const curPageRef = useRef(1);
 
   /* 当前页跟踪（反馈：页码显示不随滚动更新）：视口上 1/3 处所在的页 */
   useEffect(() => {
@@ -936,7 +959,12 @@ export function PdfViewer({ path }: { path: string }) {
           )}
           <textarea
             value={pop.ann.note}
-            onChange={(e) => patchAnnotation(pop.ann.id, { note: e.target.value })}
+            onChange={(e) => {
+              // pop.ann 是打开气泡时的快照，必须同步更新 pop 本体，否则受控 input 的值永远不变、无法输入
+              patchAnnotation(pop.ann.id, { note: e.target.value });
+              const v = e.target.value;
+              setPop((p) => (p && p.ann.id === pop.ann.id ? { ...p, ann: { ...p.ann, note: v } } : p));
+            }}
             placeholder={t.docDrawer.pdfNotePlaceholder}
             className="w-full h-16 text-xs p-1.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 resize-none outline-none focus:border-blue-500"
           />

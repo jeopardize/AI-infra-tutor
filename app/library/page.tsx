@@ -78,6 +78,14 @@ export default function LibraryPage() {
   const [rightPath, setRightPath] = useState<string | null>(null);
   const [splitOpen, setSplitOpen] = useState(false);
   const [focused, setFocused] = useState<"left" | "right">("left");
+  /** 会话页状态：切到其他页面再回来时恢复（反馈：不要重置到默认） */
+  const sessionRef = useRef(
+    typeof window !== "undefined"
+      ? (JSON.parse(sessionStorage.getItem("doc-library-page") ?? "null") as
+          | { openPath?: string | null; rightPath?: string | null; splitOpen?: boolean; focused?: "left" | "right" }
+          | null)
+      : null,
+  );
   // 分屏比例（左栏宽度百分比，可拖动调节）
   const [splitRatio, setSplitRatio] = useState(50);
   const splitBoxRef = useRef<HTMLDivElement>(null);
@@ -97,6 +105,31 @@ export default function LibraryPage() {
   // 目录树：全部收起信号（每次 +1 触发所有节点折叠）；右键菜单
   const [collapseTick, setCollapseTick] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number; node: DocNode } | null>(null);
+
+  // 初次挂载：恢复上次离开时的打开状态；之后每次变化写快照
+  useEffect(() => {
+    const s = sessionRef.current;
+    if (typeof window !== "undefined" && window.innerWidth >= 640 && s) {
+      setOpenPath(s.openPath ?? null);
+      setRightPath(s.rightPath ?? null);
+      setSplitOpen(!!s.splitOpen && !!s.rightPath);
+      setFocused(s.focused === "right" ? "right" : "left");
+    }
+    // 树展开状态仍按屏幕宽度决定
+    setTreeOpen(window.innerWidth >= 640);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        "doc-library-page",
+        JSON.stringify({ openPath, rightPath, splitOpen, focused }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [openPath, rightPath, splitOpen, focused]);
 
   useEffect(() => {
     const w = Number(localStorage.getItem(TREE_WIDTH_KEY));
@@ -554,6 +587,7 @@ export default function LibraryPage() {
           >
             <DocPane
               docPath={openPath}
+              sessionKey="library-left"
               onClose={() => setOpenPath(null)}
               onSaved={() => load()}
               placeholder={
@@ -581,6 +615,7 @@ export default function LibraryPage() {
               >
                 <DocPane
                   docPath={rightPath}
+                  sessionKey="library-right"
                   onClose={() => setRightPath(null)}
                   onSaved={() => load()}
                   placeholder={

@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.12.0";
+export const APP_VERSION = "1.12.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.12.1",
+    date: "2026-10-30",
+    items: [
+      "修复：标注编辑气泡的批注输入框无法输入（气泡状态是打开时的快照，输入值被重置）",
+      "页面切换回笔记库恢复之前状态：左右分栏打开的文档/多标签（含 编辑/预览 模式）自动还原，PDF 回到上次阅读页与缩放",
+    ],
+  },
   {
     version: "1.12.0",
     date: "2026-10-30",

@@ -149,12 +149,57 @@ export function useDocTabs(options: {
   docPath: string | null;
   onClose: () => void;
   onSaved?: (path: string, mtime: number) => void;
+  /** 会话快照 key（反馈：切页面后回来恢复之前打开的标签）；不传则不持久化 */
+  storageKey?: string;
 }) {
   const { docPath, onClose, onSaved } = options;
   const t = useT();
-  const [tabs, setTabs] = useState<DocTab[]>([]);
-  const [activePath, setActivePath] = useState<string | null>(null);
+  const storageKey = options.storageKey ?? null;
+  const [tabs, setTabs] = useState<DocTab[]>(() => {
+    if (!storageKey || typeof window === "undefined") return [];
+    try {
+      const snap = JSON.parse(sessionStorage.getItem(`doc-tabs:${storageKey}`) ?? "null") as
+        | { paths?: string[]; active?: string; modes?: Record<string, string> }
+        | null;
+      if (!snap?.paths?.length) return [];
+      return snap.paths
+        .slice(0, 12)
+        .map((p) => ({ ...newDocTab(p), mode: (snap.modes?.[p] as DocTab["mode"]) ?? "preview" }));
+    } catch {
+      return [];
+    }
+  });
+  const [activePath, setActivePath] = useState<string | null>(() => {
+    if (!storageKey || typeof window === "undefined") return null;
+    try {
+      const snap = JSON.parse(sessionStorage.getItem(`doc-tabs:${storageKey}`) ?? "null") as
+        | { active?: string }
+        | null;
+      return snap?.active ?? null;
+    } catch {
+      return null;
+    }
+  });
   const fetchingRef = useRef<Set<string>>(new Set());
+
+  // 标签快照：路径/激活项/各标签模式（内容不存，激活时再拉取）
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      if (tabs.length === 0) sessionStorage.removeItem(`doc-tabs:${storageKey}`);
+      else
+        sessionStorage.setItem(
+          `doc-tabs:${storageKey}`,
+          JSON.stringify({
+            paths: tabs.map((tb) => tb.path),
+            active: activePath,
+            modes: Object.fromEntries(tabs.map((tb) => [tb.path, tb.mode])),
+          }),
+        );
+    } catch {
+      /* 忽略配额错误 */
+    }
+  }, [tabs, activePath, storageKey]);
 
   const activeTab = tabs.find((tb) => tb.path === activePath) ?? null;
   const dirty = activeTab?.data
@@ -297,6 +342,7 @@ export function DocPane({
   onSaved,
   splitVar = false,
   placeholder,
+  sessionKey,
 }: {
   docPath: string | null;
   onClose: () => void;
@@ -306,6 +352,8 @@ export function DocPane({
   splitVar?: boolean;
   /** 无文档打开时的占位内容 */
   placeholder?: React.ReactNode;
+  /** 会话快照 key：切页面返回后恢复该分栏之前打开的标签与编辑/预览状态 */
+  sessionKey?: string;
 }) {
   const t = useT();
   const { lang } = useLang();
@@ -323,7 +371,7 @@ export function DocPane({
     loadDoc,
     save,
     closeTab,
-  } = useDocTabs({ docPath, onClose, onSaved });
+  } = useDocTabs({ docPath, onClose, onSaved, storageKey: sessionKey });
 
   useEffect(() => {
     const p = pendingCaretRef.current;
