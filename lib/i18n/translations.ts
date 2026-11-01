@@ -233,6 +233,7 @@ export interface Dict {
     menuDelete: string;
     menuNewFile: string;
     menuNewDir: string;
+    moveUnsavedConfirm: string;
     splitBtn: string;
     splitHint: string;
     splitPlaceholder: string;
@@ -601,6 +602,7 @@ const zh: Dict = {
     menuDelete: "删除",
     menuNewFile: "新建笔记",
     menuNewDir: "新建文件夹",
+    moveUnsavedConfirm: "该笔记有未保存的修改，移动到另一分屏后将丢失（先保存可避免）。继续移动？",
     splitBtn: "分屏",
     splitHint: "分屏：左右两栏对照阅读（md/pdf/图片任意组合），点击分栏切换聚焦，目录树打开的文件进入聚焦栏",
     splitPlaceholder: "分屏右侧：点击此处聚焦，再在目录树点击文件打开到这一栏（支持 md / pdf / 图片）",
@@ -981,6 +983,7 @@ const en: Dict = {
     menuDelete: "Delete",
     menuNewFile: "New note",
     menuNewDir: "New folder",
+    moveUnsavedConfirm: "This note has unsaved changes; moving it to the other pane will lose them (save first to avoid). Continue?",
     splitBtn: "Split",
     splitHint: "Split view: side-by-side reading (md/pdf/images in any combo); click a pane to focus it, files opened from the tree go to the focused pane",
     splitPlaceholder: "Split right pane: click here to focus, then open a file from the tree into this pane (md / pdf / images)",

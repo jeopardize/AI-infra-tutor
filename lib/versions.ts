@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.12.2";
+export const APP_VERSION = "1.13.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.13.0",
+    date: "2026-11-01",
+    items: [
+      "分屏拖拽移动笔记：把一侧分屏的标签直接拖到另一侧分屏任意位置即可移动（未保存修改会提示）",
+    ],
+  },
   {
     version: "1.12.2",
     date: "2026-11-01",

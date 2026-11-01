@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { DocPane } from "@/components/doc/DocPane";
+import { DocPane, type DocPaneApi } from "@/components/doc/DocPane";
 import { useT } from "@/lib/i18n/context";
 
 interface DocNode {
@@ -105,6 +105,27 @@ export default function LibraryPage() {
   // 目录树：全部收起信号（每次 +1 触发所有节点折叠）；右键菜单
   const [collapseTick, setCollapseTick] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number; node: DocNode } | null>(null);
+  /** 分屏标签跨栏拖拽：两栏 DocPane 的 API */
+  const leftApiRef = useRef<DocPaneApi | null>(null);
+  const rightApiRef = useRef<DocPaneApi | null>(null);
+
+  /** 另一栏拖来一个标签 → 本栏打开 + 源栏静默移除（未保存提示确认） */
+  const adoptInto = useCallback(
+    (pane: "left" | "right") => (path: string) => {
+      if (!splitOpen || focused !== pane) setFocused(pane);
+      if (pane === "left") setOpenPath(path);
+      else setRightPath(path);
+      const srcApi = pane === "left" ? rightApiRef.current : leftApiRef.current;
+      const dstApi = pane === "left" ? leftApiRef.current : rightApiRef.current;
+      if (srcApi && srcApi.hasTab(path)) {
+        // 未保存的修改在移动时会跟到新栏？当前会话标签内容存于源栏，静默移除会丢未存改动 → 提示
+        if (srcApi.hasUnsaved(path) && !window.confirm(t.library.moveUnsavedConfirm)) return;
+        srcApi.closeTab(path, { silent: true });
+      }
+      void dstApi;
+    },
+    [splitOpen, focused, t],
+  );
 
   // 初次挂载：恢复上次离开时的打开状态；之后每次变化写快照
   useEffect(() => {
@@ -588,6 +609,9 @@ export default function LibraryPage() {
             <DocPane
               docPath={openPath}
               sessionKey="library-left"
+              paneId="left"
+              onForeignDrop={splitOpen ? adoptInto("left") : undefined}
+              apiRef={leftApiRef}
               onClose={() => setOpenPath(null)}
               onSaved={() => load()}
               placeholder={
@@ -616,6 +640,9 @@ export default function LibraryPage() {
                 <DocPane
                   docPath={rightPath}
                   sessionKey="library-right"
+                  paneId="right"
+                  onForeignDrop={adoptInto("right")}
+                  apiRef={rightApiRef}
                   onClose={() => setRightPath(null)}
                   onSaved={() => load()}
                   placeholder={

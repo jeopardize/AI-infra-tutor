@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -84,6 +85,8 @@ const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const PDF_EXT_RE = /\.pdf$/i;
 
 /** 编辑器代码块语言候选（反馈：markdown 需要多种语法代码块输入） */
+const TAB_DRAG_TYPE = "application/x-doc-pane-tab";
+
 const CODE_LANGS = [
   "js",
   "ts",
@@ -308,11 +311,11 @@ export function useDocTabs(options: {
     [activeTab, updateTab, onSaved, t],
   );
 
-  /** 关闭某个标签页；关到最后一个时回调 onClose */
+  /** 关闭某个标签页；关到最后一个时回调 onClose（opts.silent=true 跳过“未保存”确认，供跨栏移动使用） */
   const closeTab = useCallback(
-    (path: string) => {
+    (path: string, opts?: { silent?: boolean }) => {
       const tb = tabs.find((x) => x.path === path);
-      if (tb?.data && tb.draft !== tb.data.content && !confirm(t.docDrawer.confirmCloseUnsaved)) return;
+      if (tb?.data && tb.draft !== tb.data.content && !opts?.silent && !confirm(t.docDrawer.confirmCloseUnsaved)) return;
       setTabs((prev) => {
         const idx = prev.findIndex((x) => x.path === path);
         const next = prev.filter((x) => x.path !== path);
@@ -336,6 +339,13 @@ export function useDocTabs(options: {
  * 文档面板主体：多标签 + 大纲 + 预览/编辑 + 页脚。
  * 不含定位与宽度拖拽（宿主决定布局：DocDrawer 为固定抽屉，笔记库为分栏右区）。
  */
+export interface DocPaneApi {
+  /** 静默关闭标签（opts.silent=true 时跳过未保存确认）*/
+  closeTab(path: string, opts?: { silent?: boolean }): void;
+  hasTab(path: string): boolean;
+  hasUnsaved(path: string): boolean;
+}
+
 export function DocPane({
   docPath,
   onClose,
@@ -343,6 +353,12 @@ export function DocPane({
   splitVar = false,
   placeholder,
   sessionKey,
+  /** 分屏标识（笔记库左/右栏），配合 onForeignDrop 实现跨栏拖拽移动标签 */
+  paneId,
+  /** 另一个分屏拖来一个标签 → 宿主负责打开到本栏 */
+  onForeignDrop,
+  /** 向宿主暴露本分栏的标签 API（closeTab 等） */
+  apiRef,
 }: {
   docPath: string | null;
   onClose: () => void;
@@ -354,12 +370,17 @@ export function DocPane({
   placeholder?: React.ReactNode;
   /** 会话快照 key：切页面返回后恢复该分栏之前打开的标签与编辑/预览状态 */
   sessionKey?: string;
+  paneId?: "left" | "right";
+  onForeignDrop?: (path: string) => void;
+  apiRef?: RefObject<DocPaneApi | null>;
 }) {
   const t = useT();
   const { lang } = useLang();
   const draftRef = useRef<HTMLTextAreaElement>(null);
   /** 键盘编辑（Enter 续写/Tab 缩进）后的光标位置：等 draft 重渲染后统一生效（比 rAF 可靠，避免光标跳到文档末尾） */
   const pendingCaretRef = useRef<{ pos: number; sel: number } | null>(null);
+  /** 分屏拖动时整栏高亮 */
+  const [paneDropActive, setPaneDropActive] = useState(false);
   const [codeLang, setCodeLang] = useState("js");
   const {
     tabs,
@@ -372,6 +393,20 @@ export function DocPane({
     save,
     closeTab,
   } = useDocTabs({ docPath, onClose, onSaved, storageKey: sessionKey });
+
+  // 标签 API 暴露给宿主（分屏跨栏拖拽用）
+  useEffect(() => {
+    if (apiRef) {
+      apiRef.current = {
+        closeTab: (path, opts) => closeTab(path, opts),
+        hasTab: (path) => tabs.some((tb) => tb.path === path),
+        hasUnsaved: (path) => {
+          const tb = tabs.find((x) => x.path === path);
+          return !!tb?.data && tb.draft !== tb.data.content;
+        },
+      };
+    }
+  });
 
   useEffect(() => {
     const p = pendingCaretRef.current;
@@ -832,7 +867,34 @@ export function DocPane({
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-zinc-950">
+    <div
+      className="h-full flex flex-col bg-white dark:bg-zinc-950"
+      onDragOver={(e) => {
+        // 分屏拖动：接受另一个分屏拖来的标签（反馈：左右拖拽切换）
+        if (onForeignDrop && Array.from(e.dataTransfer.types || []).includes(TAB_DRAG_TYPE)) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setPaneDropActive(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (paneDropActive && e.currentTarget === e.target) setPaneDropActive(false);
+      }}
+      onDrop={(e) => {
+        const path = e.dataTransfer.getData(TAB_DRAG_TYPE);
+        setPaneDropActive(false);
+        if (!path || !onForeignDrop) return;
+        e.preventDefault();
+        if (tabs.some((tb) => tb.path === path)) {
+          setActivePath(path); // 本分屏已有 → 仅激活
+        } else {
+          onForeignDrop(path);
+        }
+      }}
+    >
+      {paneDropActive && (
+        <div className="absolute inset-0 z-40 bg-blue-500/10 ring-2 ring-inset ring-blue-500 pointer-events-none" />
+      )}
       <header className="flex items-center justify-between gap-2 px-4 h-12 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <div className="min-w-0 flex-1">
           <div className="text-xs text-zinc-500 truncate">
@@ -924,6 +986,12 @@ export function DocPane({
                 }`}
                 onClick={() => setActivePath(tb.path)}
                 title={tb.path}
+                draggable
+                onDragStart={(e) => {
+                  // 分屏拖动：把本分屏的标签拖到另一个分屏（反馈：左右拖拽切换）
+                  e.dataTransfer.setData(TAB_DRAG_TYPE, tb.path);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
               >
                 <span className="truncate">
                   {tb.err ? "⚠ " : ""}
