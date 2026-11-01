@@ -12,7 +12,8 @@
     "dev:test": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
-    "postinstall": "node scripts/fix-lightningcss.js"
+    "postinstall": "node scripts/fix-lightningcss.js",
+    "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
