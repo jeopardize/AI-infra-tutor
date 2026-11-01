@@ -160,7 +160,8 @@ function PdfPageContent({
       try {
         const page = await doc.getPage(pageNo);
         if (cancelled) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        // 渲染倍率 渲染 1.75 上限（扫描页大图解码是首屏慢的主因；1.75 在清晰度/速度间折中）
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
         const base = page.getViewport({ scale: 1 });
         const scale = (width * dpr) / base.width;
         const vp = page.getViewport({ scale });
@@ -417,6 +418,8 @@ export function PdfViewer({ path }: { path: string }) {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [doc, setDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState(0);
+  /** 文档加载进度（超大 PDF 反馈：无反馈=无响应感） */
+  const [loadPct, setLoadPct] = useState<number | null>(null);
   const [width, setWidth] = useState(720);
   const [zoom, setZoom] = useState(1);
   const [visible, setVisible] = useState<Set<number>>(new Set([1]));
@@ -454,9 +457,18 @@ export function PdfViewer({ path }: { path: string }) {
         const lib = await loadPdfjs();
         if (cancelled) return;
         setPdfjs(lib);
-        d = await lib.getDocument({
+        const loadingTask = lib.getDocument({
           url: `/api/docs/asset?path=${encodeURIComponent(path)}`,
-        }).promise;
+          // 超大扫描版 PDF（反馈：打开慢）：按需取 Range 分片、不要后台拉全文
+          disableAutoFetch: true,
+          rangeChunkSize: 262144,
+        });
+        loadingTask.onProgress = (p: { loaded?: number; total?: number }) => {
+          if (!cancelled && p.total && p.total > 0) {
+            setLoadPct(Math.min(99, Math.round((p.loaded! / p.total) * 100)));
+          }
+        };
+        d = await loadingTask.promise;
         if (cancelled) return;
         setDoc(d);
         setNumPages(d.numPages);
@@ -733,8 +745,15 @@ export function PdfViewer({ path }: { path: string }) {
   }
   if (!doc || anns === null) {
     return (
-      <div className="h-full flex items-center justify-center gap-2 text-zinc-400 text-sm">
-        <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.pdfLoading}
+      <div className="h-full flex flex-col items-center justify-center gap-1.5 text-zinc-400 text-sm">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.pdfLoading}
+        </div>
+        {loadPct !== null && (
+          <div className="w-48 h-1 rounded bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+            <div className="h-full bg-blue-500 transition-all" style={{ width: `${loadPct}%` }} />
+          </div>
+        )}
       </div>
     );
   }

@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.12.1";
+export const APP_VERSION = "1.12.2";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.12.2",
+    date: "2026-11-01",
+    items: [
+      "大 PDF 打开提速：按需 Range 分片加载（禁用后台全文预取，不再等 67MB 下完）+ 加载进度条 + 扫描页渲染倍率 1.75",
+      "PDF/文档多标签常驻：切换标签和页面不再重新加载（已渲染页面保留），编辑文字光标位置也保持",
+    ],
+  },
   {
     version: "1.12.1",
     date: "2026-10-30",

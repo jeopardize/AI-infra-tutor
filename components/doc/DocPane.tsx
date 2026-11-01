@@ -1035,122 +1035,173 @@ export function DocPane({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      {/* 内容区：各文档标签常驻栈（反馈：PDF 切换回来不要重新加载）。
+          非激活标签 visibility:hidden（保留布局盒，IntersectionObserver 伸展仍有效，已渲染页面不回收） */}
+      <div className="flex-1 relative min-h-0">
         {activeTab?.loading && (
-          <div className="flex items-center gap-2 text-zinc-500 p-5">
+          <div className="absolute left-5 top-5 z-30 flex items-center gap-2 text-zinc-500 bg-white/80 dark:bg-zinc-950/80 rounded px-2 py-1">
             <Loader2 className="w-4 h-4 animate-spin" /> {t.docDrawer.loading}
           </div>
         )}
         {activeTab?.err && (
-          <div className="text-rose-600 text-sm p-5">
+          <div className="absolute left-5 top-5 z-30 text-rose-600 text-sm bg-white/80 dark:bg-zinc-950/80 rounded px-2 py-1">
             {t.docDrawer.readFailed(activeTab.err)}
           </div>
         )}
 
-        {activeTab?.pdf && (
-          <div className="h-full min-h-0">
-            <PdfViewer path={activeTab.path} />
-          </div>
-        )}
-
-        {activeTab?.image && (
-          <div className="h-full flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-900/40">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`/api/docs/asset?path=${encodeURIComponent(activeTab.path)}`}
-              alt={activeTab.path}
-              className="max-w-full max-h-full object-contain"
-            />
-          </div>
-        )}
-
-        {activeTab?.data && activeTab.mode === "preview" && (
-          <div className="p-5">
-            {(activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content).trim() === "" ? (
-              <div className="text-zinc-400 italic">
-                {t.docDrawer.emptyContent}
+        {/* PDF 标签：全部常驻，仅隐藏非激活 */}
+        {tabs.map((tb) =>
+          tb.pdf ? (
+            <div
+              key={tb.path}
+              className={
+                "absolute inset-0 md:inset-0 " +
+                (tb.path === activePath
+                  ? ""
+                  : "invisible pointer-events-none max-sm:hidden")
+              }
+              aria-hidden={tb.path !== activePath}
+            >
+              <div className="h-full min-h-0">
+                <PdfViewer path={tb.path} />
               </div>
-            ) : (
-              <div className="prose-tutor">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
-                  rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
-                  components={buildMarkdownComponents(rewriteAsset)}
-                >
-                  {preprocessFigRefs(activeTab.transView ? activeTab.translated ?? "" : activeTab.data.content)}
-                </ReactMarkdown>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab?.data && activeTab.mode === "edit" && (
-          <div className="h-full flex flex-col min-h-0">
-            {/* 编辑工具条：插入多语法代码块（反馈：markdown 缺少代码块输入） */}
-            <div className="flex items-center gap-1.5 px-4 py-1 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 text-xs shrink-0">
-              <Code className="w-3.5 h-3.5 text-zinc-400" />
-              <select
-                value={codeLang}
-                onChange={(e) => setCodeLang(e.target.value)}
-                className="px-1.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-              >
-                {CODE_LANGS.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={insertCodeBlock}
-                className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                {t.docDrawer.insertCodeBlock}
-              </button>
-              <button
-                onClick={insertTable}
-                className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                {t.docDrawer.insertTable}
-              </button>
-              {/* 实时预览开关（反馈：编辑时插入的图片要立即可见） */}
-              <button
-                onClick={() => setLivePreview((v) => !v)}
-                title={t.docDrawer.livePreview}
-                className={"px-2 py-1 rounded border flex items-center gap-1 " + (livePreview ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/40" : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                {t.docDrawer.livePreview}
-              </button>
-              <span className="ml-auto text-zinc-400 text-[10px]">
-                {t.docDrawer.autoSaved} 5s
-              </span>
             </div>
-            <div className="flex-1 flex min-h-0">
-              <textarea
-                ref={draftRef}
-                value={activeTab.draft}
-                onChange={(e) => updateTab(activeTab.path, { draft: e.target.value })}
-                onPaste={onEditorPaste}
-                onKeyDown={onEditorKeyDown}
-                spellCheck={false}
-                className="flex-1 min-w-0 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
-                placeholder=""
+          ) : null,
+        )}
+
+        {/* 图片标签：激活时渲染（浏览器有缓存，切换成本低） */}
+        {tabs.map((tb) =>
+          tb.image && tb.path === activePath ? (
+            <div
+              key={tb.path}
+              className="absolute inset-0 flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-900/40"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/docs/asset?path=${encodeURIComponent(tb.path)}`}
+                alt={tb.path}
+                className="max-w-full max-h-full object-contain"
               />
-              {livePreview && (
-                <div className="hidden md:block w-1/2 min-w-0 overflow-y-auto border-l border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
+            </div>
+          ) : null,
+        )}
+
+        {/* markdown 预览标签：常驻栈 */}
+        {tabs.map((tb) =>
+          tb.data && tb.mode === "preview" ? (
+            <div
+              key={tb.path}
+              className={
+                "absolute inset-0 overflow-y-auto " +
+                (tb.path === activePath
+                  ? ""
+                  : "invisible pointer-events-none max-sm:hidden")
+              }
+              aria-hidden={tb.path !== activePath}
+            >
+              <div className="p-5">
+                {(tb.transView ? tb.translated ?? "" : tb.data.content).trim() === "" ? (
+                  <div className="text-zinc-400 italic">
+                    {t.docDrawer.emptyContent}
+                  </div>
+                ) : (
                   <div className="prose-tutor">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
                       rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
-                      components={buildMarkdownComponents(rewriteAsset, jumpToEditLine)}
+                      components={buildMarkdownComponents(rewriteAsset)}
                     >
-                      {preprocessFigRefs(previewDraft)}
+                      {preprocessFigRefs(tb.transView ? tb.translated ?? "" : tb.data.content)}
                     </ReactMarkdown>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          ) : null,
+        )}
+
+        {/* 编辑模式标签：常驻栈（textarea ref 只接激活标签，光标定位不串扰） */}
+        {tabs.map((tb) =>
+          tb.data && tb.mode === "edit" ? (
+            (() => {
+              const isActive = tb.path === activePath;
+              return (
+                <div
+                  key={tb.path}
+                  className={
+                    "absolute inset-0 flex flex-col min-h-0 " +
+                    (isActive ? "" : "invisible pointer-events-none max-sm:hidden")
+                  }
+                  aria-hidden={!isActive}
+                >
+                  {/* 编辑工具条：插入多语法代码块（反馈：markdown 缺少代码块输入） */}
+                  <div className="flex items-center gap-1.5 px-4 py-1 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 text-xs shrink-0">
+                    <Code className="w-3.5 h-3.5 text-zinc-400" />
+                    <select
+                      value={codeLang}
+                      onChange={(e) => setCodeLang(e.target.value)}
+                      className="px-1.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                    >
+                      {CODE_LANGS.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={insertCodeBlock}
+                      className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      {t.docDrawer.insertCodeBlock}
+                    </button>
+                    <button
+                      onClick={insertTable}
+                      className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      {t.docDrawer.insertTable}
+                    </button>
+                    {/* 实时预览开关（反馈：编辑时插入的图片要立即可见） */}
+                    <button
+                      onClick={() => setLivePreview((v) => !v)}
+                      title={t.docDrawer.livePreview}
+                      className={"px-2 py-1 rounded border flex items-center gap-1 " + (livePreview ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/40" : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      {t.docDrawer.livePreview}
+                    </button>
+                    <span className="ml-auto text-zinc-400 text-[10px]">
+                      {t.docDrawer.autoSaved} 5s
+                    </span>
+                  </div>
+                  <div className="flex-1 flex min-h-0">
+                    <textarea
+                      ref={isActive ? draftRef : undefined}
+                      value={tb.draft}
+                      onChange={(e) => updateTab(tb.path, { draft: e.target.value })}
+                      onPaste={onEditorPaste}
+                      onKeyDown={onEditorKeyDown}
+                      spellCheck={false}
+                      className="flex-1 min-w-0 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
+                      placeholder=""
+                    />
+                    {isActive && livePreview && (
+                      <div className="hidden md:block w-1/2 min-w-0 overflow-y-auto border-l border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
+                        <div className="prose-tutor">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
+                            rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
+                            components={buildMarkdownComponents(rewriteAsset, jumpToEditLine)}
+                          >
+                            {preprocessFigRefs(previewDraft)}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          ) : null,
         )}
       </div>
 
