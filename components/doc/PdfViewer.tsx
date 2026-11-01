@@ -412,7 +412,7 @@ function OutlineNode({
   );
 }
 
-export function PdfViewer({ path }: { path: string }) {
+export function PdfViewer({ path, active = true }: { path: string; active?: boolean }) {
   const { t, lang } = useLang();
   const [pdfjs, setPdfjs] = useState<any>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -450,6 +450,7 @@ export function PdfViewer({ path }: { path: string }) {
   /* 加载 pdf.js 与文档 */
   useEffect(() => {
     let cancelled = false;
+    let loaded = false;
     let d: any = null;
     setLoadErr(null);
     (async () => {
@@ -468,8 +469,15 @@ export function PdfViewer({ path }: { path: string }) {
             setLoadPct(Math.min(99, Math.round((p.loaded! / p.total) * 100)));
           }
         };
+        // 加载兜底：网络悬挂/文件失效（404 不冒泡）时不能一直转圈（反馈：卡死在加载）
+        setTimeout(() => {
+          if (!cancelled && !loaded) {
+            setLoadErr("加载超时：文件可能已被移动/重命名或网络异常，请重试");
+          }
+        }, 30000);
         d = await loadingTask.promise;
         if (cancelled) return;
+        loaded = true;
         setDoc(d);
         setNumPages(d.numPages);
         // 恢复上次阅读位置（页码/缩放）
@@ -586,7 +594,10 @@ export function PdfViewer({ path }: { path: string }) {
             if (en.isIntersecting) {
               if (!next.has(p)) { next.add(p); changed = true; }
             } else if (next.has(p)) {
-              // 视口外（含 800px 缓冲外）卸载页面，超大 PDF 不会内存/渲染堆积
+              // 视口外（含 1200px 缓冲外）卸载页面，超大 PDF 不会内存/渲染堆积；
+              // 非激活（隐藏标签）时不清除——隐藏容器无几何信息会误判全部不可见，
+              // 清掉会导致切回该标签时全部页面重新加载（反馈：切回来变占位图重新渲染）
+              if (!active) continue;
               next.delete(p);
               changed = true;
             }
@@ -598,7 +609,7 @@ export function PdfViewer({ path }: { path: string }) {
     );
     Object.values(pageEls.current).forEach((el) => el && io.observe(el));
     return () => io.disconnect();
-  }, [numPages, doc]);
+  }, [numPages, doc, active]);
 
   const [curPage, setCurPage] = useState(1);
   const curPageRef = useRef(1);

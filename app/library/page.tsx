@@ -259,6 +259,22 @@ export default function LibraryPage() {
     }
   }
 
+  /** 重命名/删除后：清理所有分屏里失效的路径标签（prefix=匹配父路径） */
+  const purgeStaleTabs = useCallback(
+    (oldPath: string, { prefixMatch = false }: { prefixMatch?: boolean } = {}) => {
+      for (const api of [leftApiRef.current, rightApiRef.current]) {
+        if (!api) continue;
+        for (const p of api.tabs()) {
+          const hit = prefixMatch ? p === oldPath || p.startsWith(`${oldPath}/`) : p === oldPath;
+          if (hit) api.closeTab(p, { silent: true });
+        }
+      }
+      setOpenPath((open) => (open && (prefixMatch ? open === oldPath || open.startsWith(`${oldPath}/`) : open === oldPath) ? null : open));
+      setRightPath((rp) => (rp && (prefixMatch ? rp === oldPath || rp.startsWith(`${oldPath}/`) : rp === oldPath) ? null : rp));
+    },
+    [],
+  );
+
   async function renameNode(node: DocNode) {
     const newName = window.prompt(`重命名「${node.name}」为：`, node.name);
     if (!newName || newName.trim() === node.name) return;
@@ -276,6 +292,11 @@ export default function LibraryPage() {
       alert(`重命名失败：${json.error}`);
       return;
     }
+    // 重命名后：旧路径标签失效 → 清理；若被重命名的文件正开着，直接打开新路径
+    const newRel = node.path.split("/").slice(0, -1).concat(newName.trim()).join("/");
+    if (node.type === "file" && openPath === node.path) setOpenPath(newRel);
+    if (node.type === "file" && rightPath === node.path) setRightPath(newRel);
+    purgeStaleTabs(node.path, { prefixMatch: node.type === "dir" });
     load();
   }
 
@@ -291,9 +312,8 @@ export default function LibraryPage() {
       alert(`${t.library.deleteFailed(json.error ?? r.statusText)}`);
       return;
     }
-    // 正在打开的文档若被删，先关闭
-    setOpenPath((p) => (p && (p === node.path || p.startsWith(`${node.path}/`)) ? null : p));
-    setRightPath((p) => (p && (p === node.path || p.startsWith(`${node.path}/`)) ? null : p));
+    // 正在打开的文档若被删，先关闭（含各分屏常驻标签）
+    purgeStaleTabs(node.path, { prefixMatch: node.type === "dir" });
     load();
   }
 

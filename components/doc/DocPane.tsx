@@ -344,6 +344,8 @@ export interface DocPaneApi {
   closeTab(path: string, opts?: { silent?: boolean }): void;
   hasTab(path: string): boolean;
   hasUnsaved(path: string): boolean;
+  /** 本分栏当前打开的标签路径（重命名/删除后剔除失效标签用） */
+  tabs(): string[];
 }
 
 export function DocPane({
@@ -404,6 +406,7 @@ export function DocPane({
           const tb = tabs.find((x) => x.path === path);
           return !!tb?.data && tb.draft !== tb.data.content;
         },
+        tabs: () => tabs.map((tb) => tb.path),
       };
     }
   });
@@ -1131,7 +1134,7 @@ export function DocPane({
               aria-hidden={tb.path !== activePath}
             >
               <div className="h-full min-h-0">
-                <PdfViewer path={tb.path} />
+                <PdfViewer path={tb.path} active={tb.path === activePath} />
               </div>
             </div>
           ) : null,

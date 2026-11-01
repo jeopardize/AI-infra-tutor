@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.13.0";
+export const APP_VERSION = "1.13.1";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.13.1",
+    date: "2026-11-01",
+    items: [
+      "切换标签/页面后返回的 PDF 不再整份重新渲染（隐藏标签的已渲染页保留）",
+      "PDF 加载超时（30s）会明确报错并可重试，修复文件被重命名后标签静默卡死",
+      "重命名/删除文件后自动清理各分屏里失效的标签；正在打开的文件改用新路径",
+    ],
+  },
   {
     version: "1.13.0",
     date: "2026-11-01",
