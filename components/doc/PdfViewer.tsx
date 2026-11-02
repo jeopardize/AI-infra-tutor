@@ -480,14 +480,17 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
         loaded = true;
         setDoc(d);
         setNumPages(d.numPages);
-        // 恢复上次阅读位置（页码/缩放）
+        // 恢复上次阅读位置：页码 + 页内偏移（延迟到骨架布局后；真实页高渲染完成后再校正一次）
         try {
           const saved = JSON.parse(localStorage.getItem(`pdf-pos:${path}`) ?? "null") as
-            | { page?: number; zoom?: number }
+            | { page?: number; offY?: number; zoom?: number }
             | null;
           if (saved?.zoom && saved.zoom >= 0.5 && saved.zoom <= 2.5) setZoom(saved.zoom);
-          if (saved?.page && saved.page > 1) {
-            setTimeout(() => setPage(Math.min(saved.page!, d.numPages)), 80);
+          const sp = Math.min(saved?.page ?? 1, d.numPages);
+          const so = saved?.offY ?? 0;
+          if (sp > 1 || so > 0) {
+            setTimeout(() => restoreScroll(sp, so), 150);
+            setTimeout(() => restoreScroll(sp, so), 900);
           }
         } catch {
           /* ignore */
@@ -568,12 +571,15 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
     };
   }, [path]);
 
-  /* 容器宽度 → 页面宽度 */
+  /* 容器宽度 → 页面宽度。
+     隐藏（display:none）时 clientWidth=0 → 不能把 width 缩成 280，
+     否则显示回来又放大：所有页面画布来回重渲染（反馈：切换 PDF 后全部刷新） */
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      setWidth(Math.max(280, el.clientWidth - 24));
+      const w = el.clientWidth - 24;
+      if (w > 80) setWidth(w);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -613,16 +619,41 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
 
   const [curPage, setCurPage] = useState(1);
   const curPageRef = useRef(1);
+  /** 页内滚动偏移（当前页顶到滚动位置），用于精确还原“上次看到的那一行” */
+  const offYRef = useRef(0);
 
-  /* 阅读位置记忆：页码/缩放变化时落盘（反馈：切页面回来应维持之前的状态） */
+  /* 阅读位置记忆：页码/页内偏移/缩放变化时落盘（反馈：切页面回来应维持之前的状态） */
   useEffect(() => {
     if (!doc) return;
     try {
-      localStorage.setItem(`pdf-pos:${path}`, JSON.stringify({ page: curPage, zoom }));
+      localStorage.setItem(`pdf-pos:${path}`, JSON.stringify({ page: curPage, offY: Math.round(offYRef.current), zoom }));
     } catch {
       /* ignore */
     }
   }, [curPage, zoom, doc, path]);
+
+  /** 把滚动容器恢复到 (page, offY)：页顶 + 页内偏移；供进文档与回标签共用 */
+  const restoreScroll = useCallback((page: number, offY: number) => {
+    const root = scrollRef.current;
+    const el = pageEls.current[page];
+    if (!root || !el) return;
+    root.scrollTop = Math.max(0, el.offsetTop + offY);
+    curPageRef.current = page;
+    setCurPage(page);
+  }, []);
+
+  /** 回到激活状态（false→true，如切标签回来）：恢复离开时的滚动位置
+     （display:none 切换/浏览器会丢掉 scrollTop；visibility 也可能在部分容器丢） */
+  const wasActiveRef = useRef(true);
+  useEffect(() => {
+    if (active && !wasActiveRef.current && doc) {
+      const root = scrollRef.current;
+      if (root && root.scrollHeight > root.clientHeight) {
+        restoreScroll(curPageRef.current, offYRef.current);
+      }
+    }
+    wasActiveRef.current = active;
+  }, [active, doc, restoreScroll]);
 
   const setPage = (p: number) => {
     curPageRef.current = p;
@@ -631,7 +662,8 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  /* 当前页跟踪（反馈：页码显示不随滚动更新）：视口上 1/3 处所在的页 */
+  /* 当前页跟踪（反馈：页码显示不随滚动更新）：视口上 1/3 处所在的页；
+     同时记录页内偏移（反馈：来回切换要回到上一秒看到的那一行，而不是页顶/首页） */
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || !numPages) return;
@@ -644,6 +676,10 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
         const r = el.getBoundingClientRect();
         if (r.top <= y && r.bottom > y) {
           const p = Number(el.dataset.page);
+          if (root.scrollTop >= 0) {
+            // 页内偏移 = 滚动位置 − 该页顶的滚动位置（随布局缩放仍能对应）
+            offYRef.current = Math.max(0, root.scrollTop - el.offsetTop);
+          }
           if (p && p !== curPageRef.current) {
             curPageRef.current = p;
             setCurPage(p);

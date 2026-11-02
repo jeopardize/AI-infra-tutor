@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.13.1";
+export const APP_VERSION = "1.13.2";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.13.2",
+    date: "2026-11-01",
+    items: [
+      "PDF 记忆精确到行：来回切换/关页/重开会回到上次看到的页码+页内位置（不再跳到页顶/首页）",
+      "修复隐藏标签宽度被误读为 0 导致所有页面画布重渲染（切换 PDF 后全量刷新的根源）",
+    ],
+  },
   {
     version: "1.13.1",
     date: "2026-11-01",
