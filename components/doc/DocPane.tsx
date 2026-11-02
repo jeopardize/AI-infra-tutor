@@ -660,14 +660,20 @@ export function DocPane({
     return fence;
   }
 
-  /** 缩进单位：正文用全角空格（预览不折叠）；代码围栏/引用/列表行内用半角空格（产生真实嵌套层级） */
+  /** 缩进单位：正文用全角空格（预览不折叠）；代码围栏/引用/列表行内用半角空格（产生真实嵌套层级）。
+   *  有序列表行按标记宽度自适应：Tab 在 "1. " 行内插 3 格、"10. " 插 4 格——
+   *  二级列表要求缩进 ≥ 标记+空格宽，固定 2 格在有序列表下只能打平（反馈：二级列表不生效） */
   function indentUnit(text: string, pos: number): string {
     if (insideFence(text, pos)) return INDENT_CODE;
     const lineStart = text.lastIndexOf("\n", pos - 1) + 1;
     const lineHead = text.slice(lineStart, pos);
-    if (/^[ \t]*>/.test(lineHead) || /^[ \t]*[*+-] /.test(lineHead) || /^[ \t]*\d+\. /.test(lineHead)) {
-      return INDENT_CODE;
-    }
+    const qm = lineHead.match(/^[ \t]*>+[ \t]*/);
+    const qLen = qm ? qm[0].length : 0;
+    const rest = qLen ? lineHead.slice(qLen) : lineHead;
+    const om = rest.match(/^[ \t]*(\d{1,9})\.[ \t]/);
+    const um = rest.match(/^[ \t]*[*+-][ \t]/);
+    if (om) return " ".repeat(qLen + om[1].length + 2);
+    if (um) return " ".repeat(qLen + um[0].length);
     return INDENT_TEXT;
   }
 
@@ -731,9 +737,10 @@ export function DocPane({
       return;
     }
 
-    if (e.key !== "Tab") return;
+    // cmd/Ctrl+[ = 反缩进；cmd/Ctrl+] = 增加一级缩进（反馈：快捷键）
+    if (e.key !== "Tab" && !((e.metaKey || e.ctrlKey) && (e.key === "[" || e.key === "]"))) return;
     e.preventDefault();
-    const outdent = e.shiftKey;
+    const outdent = e.key === "Tab" ? e.shiftKey : e.key === "[";
 
     // 有选择（哪怕单行）或反缩进 → 行级缩进/反缩进
     if (s !== end || outdent) {
@@ -744,7 +751,7 @@ export function DocPane({
       let delta = 0;
       let firstDelta = 0;
       const processed = lines.map((line, i) => {
-        const m = line.match(/^(\u3000\u3000| {2}|\t)/);
+        const m = line.match(/^(\u3000\u3000|\t| {1,4})/);
         if (outdent) {
           const cut = m ? m[1].length : 0;
           if (i === 0) firstDelta = -cut;
@@ -769,7 +776,7 @@ export function DocPane({
     if (outdent) {
       // 反缩进：删除光标所在行行首一个缩进单位
       const lineStart = value.lastIndexOf("\n", s - 1) + 1;
-      const m = value.slice(lineStart).match(/^(\u3000\u3000| {2}|\t)/);
+      const m = value.slice(lineStart).match(/^(\u3000\u3000|\t| {1,4})/);
       if (!m) return;
       const next = value.slice(0, lineStart) + value.slice(lineStart + m[1].length);
       const caret = Math.max(lineStart, s - m[1].length);

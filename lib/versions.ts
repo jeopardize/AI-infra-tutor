@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.13.2";
+export const APP_VERSION = "1.13.3";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.13.3",
+    date: "2026-11-02",
+    items: [
+      "有序列表的二级缩进修复：Tab 在 `1. ` 行内按编号宽度自适应（插 3 格），二级列表不再被展平",
+      "编辑器快捷键：Cmd/Ctrl+[ 反缩进、Cmd/Ctrl+] 增加一级缩进（等价 Shift+Tab / Tab）",
+      "反缩进按实际列宽一次退到位（不再残留空格）",
+    ],
+  },
   {
     version: "1.13.2",
     date: "2026-11-01",
