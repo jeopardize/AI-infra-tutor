@@ -67,5 +67,24 @@ export function preprocessFigRefs(md: string): string {
     );
   }
 
+  // 3) 空列表符兜底（反馈：二级 "- " 没渲染成 bullet）：
+  //    无内容的 "- " 行会被解析为上一段的 setext 二级标题下划线（"-" 是 h2 下划线），
+  //    整行 bullet 消失、结构错乱 → 给空 bullet 补最小内容 &nbsp;，保证按空圆点渲染
+  for (const seg of segments) {
+    if (seg.fenced) continue;
+    seg.text = seg.text
+      .split("\n")
+      .map((line) => {
+        if (/^(\s*(?:>[ \t]*)+)[-*+][ \t]*$/.test(line)) {
+          return line.replace(/^(\s*(?:>[ \t]*)+)[-*+][ \t]*$/, "$1- &nbsp;");
+        }
+        if (/^(\s*)[-*+][ \t]*$/.test(line)) {
+          return line.replace(/^(\s*)[-+*][ \t]*$/, "$1- &nbsp;");
+        }
+        return line;
+      })
+      .join("\n");
+  }
+
   return segments.map((s) => s.text).join("");
 }

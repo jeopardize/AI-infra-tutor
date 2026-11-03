@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.13.3";
+export const APP_VERSION = "1.13.4";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.13.4",
+    date: "2026-11-02",
+    items: [
+      "修复：无内容的 \"- \" 行被 markdown 当作上一段二级标题下划线（setext），导致 bullet 消失/结构错乱——空 bullet 自动补一格内容，按空圆点正常渲染",
+    ],
+  },
   {
     version: "1.13.3",
     date: "2026-11-02",
