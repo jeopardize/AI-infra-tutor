@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { repoFromRequest } from "@/lib/docs/repos";
 import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -9,6 +10,8 @@ interface RenameBody {
   path: string;
   /** 新名字（不含路径） */
   newName: string;
+  /** 多仓库标识（可选） */
+  repo?: string;
 }
 
 export async function POST(req: Request) {
@@ -25,7 +28,9 @@ export async function POST(req: Request) {
   if (/[\\<>:"|?*\0/]/.test(name)) {
     return Response.json({ error: "名称包含非法字符" }, { status: 400 });
   }
-  const abs = resolveSafe(body.path);
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
+  const abs = resolveSafe(body.path, repo.root);
   if (!abs) return Response.json({ error: "invalid path" }, { status: 400 });
 
   const stat = await fs.stat(abs).catch(() => null);
@@ -36,7 +41,7 @@ export async function POST(req: Request) {
     .slice(0, -1)
     .concat(name)
     .join("/");
-  const newAbs = resolveSafe(newRel);
+  const newAbs = resolveSafe(newRel, repo.root);
   if (!newAbs) return Response.json({ error: "invalid target path" }, { status: 400 });
 
   try {
@@ -45,6 +50,6 @@ export async function POST(req: Request) {
   } catch {}
 
   await fs.rename(abs, newAbs);
-  await syncPushNotes(`web: rename ${body.path} -> ${name}`);
+  await syncPushNotes(`web: rename ${body.path} -> ${name}`, repo.root);
   return Response.json({ ok: true, path: newRel });
 }

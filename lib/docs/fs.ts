@@ -12,9 +12,10 @@ export function libraryRoot(): string {
 /**
  * 把用户传入的相对路径安全解析为绝对路径。
  * 防止路径穿越：解析后必须仍在 libraryRoot 之内。
+ * 多仓库：传入 rootOverride 指定对应仓库的本地根目录。
  */
-export function resolveSafe(relPath: string): string | null {
-  const root = libraryRoot();
+export function resolveSafe(relPath: string, rootOverride?: string): string | null {
+  const root = rootOverride ?? libraryRoot();
   // 拒绝绝对路径
   if (path.isAbsolute(relPath)) return null;
   const abs = path.resolve(root, relPath);
@@ -35,8 +36,8 @@ export interface DocNode {
 
 const IGNORE = new Set([".git", ".DS_Store", "node_modules", ".obsidian", ".annotations"]);
 
-export async function scanLibrary(): Promise<DocNode | null> {
-  const root = libraryRoot();
+export async function scanLibrary(rootOverride?: string): Promise<DocNode | null> {
+  const root = rootOverride ?? libraryRoot();
   try {
     await fs.access(root);
   } catch {

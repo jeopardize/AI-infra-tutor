@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { libraryRoot, resolveSafe } from "@/lib/docs/fs";
+import { repoFromRequest, getLibraryRepo } from "@/lib/docs/repos";
+import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
 export const runtime = "nodejs";
@@ -38,8 +39,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const rel = url.searchParams.get("path") ?? "";
   if (!rel) return Response.json({ error: "missing path" }, { status: 400 });
-  const root = libraryRoot();
-  const abs = sidecarPath(root, rel);
+  const repo = await getLibraryRepo(url.searchParams.get("repo"));
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
+  const abs = sidecarPath(repo.root, rel);
   try {
     const text = await fs.readFile(abs, "utf-8");
     const data = JSON.parse(text) as AnnotationFile;
@@ -50,7 +52,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  let body: { path?: string; annotations?: Annotation[] };
+  let body: { path?: string; annotations?: Annotation[]; repo?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -60,12 +62,13 @@ export async function POST(req: Request) {
   if (!rel || !Array.isArray(body.annotations)) {
     return Response.json({ error: "path and annotations required" }, { status: 400 });
   }
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
   // 校验 PDF 路径本身合法（防越权写）
-  if (!resolveSafe(rel)) {
+  if (!resolveSafe(rel, repo.root)) {
     return Response.json({ error: "invalid path" }, { status: 400 });
   }
-  const root = libraryRoot();
-  const abs = sidecarPath(root, rel);
+  const abs = sidecarPath(repo.root, rel);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   const data: AnnotationFile = {
     version: 1,
@@ -75,7 +78,7 @@ export async function POST(req: Request) {
   await fs.writeFile(abs, JSON.stringify(data, null, 2), "utf-8");
   // 标注属于低频离散操作，直接 commit+push 同步到 GitHub
   try {
-    await syncPushNotes(`web: annotations ${rel}`);
+    await syncPushNotes(`web: annotations ${rel}`, repo.root);
   } catch (e) {
     return Response.json({
       path: rel,

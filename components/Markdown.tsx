@@ -8,7 +8,8 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import { remarkCallouts } from "@/lib/markdown/callouts";
 import { remarkHighlight } from "@/lib/markdown/highlight";
-import { preprocessFigRefs } from "@/lib/markdown/figrefs";
+import { remarkPens } from "@/lib/markdown/pens";
+import { preprocessNote } from "@/lib/markdown/normalize";
 import { rehypeFigDefs } from "@/lib/markdown/figdefs";
 import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
 
@@ -16,11 +17,11 @@ export function Markdown({ children }: { children: string }) {
   return (
     <div className="prose-tutor">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkPens, remarkCallouts]}
         rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
         components={markdownCodeComponents}
       >
-        {preprocessFigRefs(children)}
+        {preprocessNote(children)}
       </ReactMarkdown>
     </div>
   );

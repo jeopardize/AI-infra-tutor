@@ -15,11 +15,14 @@ import remarkBreaks from "remark-breaks";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import { remarkCallouts } from "@/lib/markdown/callouts";
-import { preprocessFigRefs } from "@/lib/markdown/figrefs";
 import { rehypeFigDefs } from "@/lib/markdown/figdefs";
 import { remarkHighlight } from "@/lib/markdown/highlight";
-import { markdownCodeComponents } from "@/components/markdown/CodeRenderer";
+import { remarkPens } from "@/lib/markdown/pens";
+import { preprocessNote } from "@/lib/markdown/normalize";
+import { markdownCodeComponents, codeComponentsWithJump } from "@/components/markdown/CodeRenderer";
 import { PdfViewer } from "@/components/doc/PdfViewer";
+import { ImageLightbox, type ImageLightboxState } from "@/components/doc/ImageLightbox";
+import { cacheGetJSON, cacheSetJSON } from "@/lib/docs/client-cache";
 import {
   Check,
   ChevronDown,
@@ -31,6 +34,7 @@ import {
   ListTree,
   Loader2,
   Pencil,
+  PenLine,
   Save,
   X,
 } from "lucide-react";
@@ -154,8 +158,10 @@ export function useDocTabs(options: {
   onSaved?: (path: string, mtime: number) => void;
   /** 会话快照 key（反馈：切页面后回来恢复之前打开的标签）；不传则不持久化 */
   storageKey?: string;
+  /** 多仓库标识（笔记库）：读写/资产请求带上 */
+  repo?: string | null;
 }) {
-  const { docPath, onClose, onSaved } = options;
+  const { docPath, onClose, onSaved, repo } = options;
   const t = useT();
   const storageKey = options.storageKey ?? null;
   const [tabs, setTabs] = useState<DocTab[]>(() => {
@@ -229,11 +235,21 @@ export function useDocTabs(options: {
   const loadDoc = useCallback(
     (path: string) => {
       if (fetchingRef.current.has(path)) return;
+      // 会话缓存（反馈：切页面回来不要重新拉取刷新）：先用缓存内容立即渲染，再后台校验
+      const cacheKey = `doc-read:${repo ?? "default"}:${path}`;
+      const cached = cacheGetJSON<DocReadResp>(cacheKey);
+      if (cached?.content != null) {
+        setTabs((prev) =>
+          prev.map((tb) =>
+            tb.path === path && !tb.data ? { ...tb, loading: true, err: null, data: cached, draft: cached.content, savedMtime: cached.mtime } : tb,
+          ),
+        );
+      }
       fetchingRef.current.add(path);
       setTabs((prev) =>
         prev.map((tb) => (tb.path === path ? { ...tb, loading: true, err: null } : tb)),
       );
-      fetch(`/api/docs/read?path=${encodeURIComponent(path)}`)
+      fetch(`/api/docs/read?path=${encodeURIComponent(path)}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`)
         .then(async (r) => {
           const json = (await r.json()) as DocReadResp;
           setTabs((prev) =>
@@ -242,6 +258,15 @@ export function useDocTabs(options: {
               if (!r.ok) {
                 return { ...tb, loading: false, err: json.error ?? "读取失败", data: null };
               }
+              // 内容没变（与缓存一致）→ 不重设 data/draft，避免编辑态与滚动位置被打断
+              if (
+                cached?.content === json.content &&
+                cached?.mtime === json.mtime &&
+                tb.data?.mtime === json.mtime
+              ) {
+                return { ...tb, loading: false, err: null };
+              }
+              cacheSetJSON(cacheKey, json);
               return { ...tb, loading: false, err: null, data: json, draft: json.content, savedMtime: json.mtime };
             }),
           );
@@ -257,7 +282,7 @@ export function useDocTabs(options: {
           fetchingRef.current.delete(path);
         });
     },
-    [],
+    [repo],
   );
 
   // 懒加载：激活的标签页尚未拉取内容时请求（图片/PDF 标签直接走 /api/docs/asset 预览）
@@ -283,6 +308,7 @@ export function useDocTabs(options: {
             content: activeTab.draft,
             expectMtime: activeTab.savedMtime,
             autosave: silent,
+            repo: repo ?? undefined,
           }),
         });
         const json = (await r.json()) as WriteResp;
@@ -301,6 +327,13 @@ export function useDocTabs(options: {
           saveMsgKind: "ok",
           saving: false,
         });
+        // 保存后同步会话缓存，避免切页面回来又被旧缓存覆盖回退
+        cacheSetJSON(`doc-read:${repo ?? "default"}:${activeTab.data.path}`, {
+          ...activeTab.data,
+          content: activeTab.draft,
+          mtime: json.mtime!,
+          bytes: json.bytes!,
+        });
         onSaved?.(activeTab.data.path, json.mtime!);
         setTimeout(() => updateTab(path, { saveMsg: null }), silent ? 1200 : 2000);
       } catch (e) {
@@ -308,7 +341,7 @@ export function useDocTabs(options: {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeTab, updateTab, onSaved, t],
+    [activeTab, updateTab, onSaved, t, repo],
   );
 
   /** 关闭某个标签页；关到最后一个时回调 onClose（opts.silent=true 跳过“未保存”确认，供跨栏移动使用） */
@@ -355,6 +388,8 @@ export function DocPane({
   splitVar = false,
   placeholder,
   sessionKey,
+  /** 多仓库标识（笔记库）：读写/资产请求带上，区分不同 git 仓库 */
+  repo,
   /** 分屏标识（笔记库左/右栏），配合 onForeignDrop 实现跨栏拖拽移动标签 */
   paneId,
   /** 另一个分屏拖来一个标签 → 宿主负责打开到本栏 */
@@ -372,6 +407,8 @@ export function DocPane({
   placeholder?: React.ReactNode;
   /** 会话快照 key：切页面返回后恢复该分栏之前打开的标签与编辑/预览状态 */
   sessionKey?: string;
+  /** 多仓库标识（笔记库） */
+  repo?: string | null;
   paneId?: "left" | "right";
   onForeignDrop?: (path: string) => void;
   apiRef?: RefObject<DocPaneApi | null>;
@@ -379,11 +416,18 @@ export function DocPane({
   const t = useT();
   const { lang } = useLang();
   const draftRef = useRef<HTMLTextAreaElement>(null);
-  /** 键盘编辑（Enter 续写/Tab 缩进）后的光标位置：等 draft 重渲染后统一生效（比 rAF 可靠，避免光标跳到文档末尾） */
-  const pendingCaretRef = useRef<{ pos: number; sel: number } | null>(null);
+  /** 实时预览容器（编辑器点击 → 预览同步滚动到对应位置，反馈：来回翻找很耗时间） */
+  const previewRef = useRef<HTMLDivElement>(null);
+  /** 键盘编辑（Enter 续写/Tab 缩进）后的光标位置：等 draft 重渲染后统一生效（比 rAF 可靠，避免光标跳到文档末尾）。
+   *  scrollTop：值替换会让 textarea 滚动复位，需要带回原滚动位置（反馈：红/蓝笔输入时视图跳动） */
+  const pendingCaretRef = useRef<{ pos: number; sel: number; scrollTop?: number } | null>(null);
   /** 分屏拖动时整栏高亮 */
   const [paneDropActive, setPaneDropActive] = useState(false);
   const [codeLang, setCodeLang] = useState("js");
+  /** 红笔/蓝笔批注（反馈：md 笔记批注快速切换字色）："r"红 / "b"蓝 / null 关闭 */
+  const [pen, setPen] = useState<"r" | "b" | null>(null);
+  /** 图片 lightbox（反馈：预览图片可点开、调大小、固定桌面拖动） */
+  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const {
     tabs,
     activePath,
@@ -394,7 +438,7 @@ export function DocPane({
     loadDoc,
     save,
     closeTab,
-  } = useDocTabs({ docPath, onClose, onSaved, storageKey: sessionKey });
+  } = useDocTabs({ docPath, onClose, onSaved, storageKey: sessionKey, repo });
 
   // 标签 API 暴露给宿主（分屏跨栏拖拽用）
   useEffect(() => {
@@ -422,6 +466,8 @@ export function DocPane({
     } catch {
       /* 光标越界时忽略 */
     }
+    // setSelectionRange 可能把视口滚到光标处；笔输入时要保持原滚动位置完全不变
+    if (p.scrollTop !== undefined) ta.scrollTop = p.scrollTop;
   }, [activeTab?.draft]);
 
   /** 实时预览点击块级元素 → 编辑器光标定位到对应行并选中该行（反馈：预览点击定位编辑） */
@@ -439,10 +485,81 @@ export function DocPane({
     } catch {
       /* ignore */
     }
-    const lh = parseFloat(getComputedStyle(ta).lineHeight || "20") || 20;
-    const target = row * lh - ta.clientHeight / 3;
-    ta.scrollTop = Math.max(0, Math.min(target, ta.scrollHeight - ta.clientHeight));
+    // 软换行（长段落自动折行）会让"行号×行高"严重偏离实际渲染位置，
+    // 用镜像 div 精确测量第 row 行的像素偏移，再定位到视口上 1/3 处
+    const top = measureTextareaLineTop(ta, row);
+    ta.scrollTop = Math.max(0, Math.min(top - ta.clientHeight / 3, ta.scrollHeight - ta.clientHeight));
   }, []);
+
+  /** 打开图片 lightbox（预览/实时预览中的图片点击） */
+  const openImage = useCallback((st: ImageLightboxState) => setLightbox(st), []);
+
+  /** 编辑器点击 → 右侧实时预览滚到光标所在源码行对应的块（反馈：来回翻找很耗时间）。
+   *  预览块带 data-src-line（源码行号），取行号 ≤ 光标行号的最后一个块，
+   *  只滚预览容器自身（不动外层页面）。 */
+  const syncPreviewToCaret = useCallback(() => {
+    const ta = draftRef.current;
+    const root = previewRef.current;
+    if (!ta || !root) return;
+    const line = ta.value.slice(0, ta.selectionStart).split("\n").length;
+    let target: HTMLElement | null = null;
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-src-line]"))) {
+      if (Number(el.dataset.srcLine) <= line) target = el;
+      else break;
+    }
+    if (!target) return;
+    const delta = target.getBoundingClientRect().top - root.getBoundingClientRect().top;
+    root.scrollTop += delta - 8;
+  }, []);
+
+  /** 把 lightbox 中选定的宽度写回 markdown：![alt](src) → ![alt](src "W")
+   *  （反馈：插入的图片显示过大，希望可调大小） */
+  const applyImageWidth = useCallback((w: number) => {
+    if (!lightbox?.originalSrc || !activeTab?.data) return;
+    const src = lightbox.originalSrc;
+    // 匹配该图片引用（可已有宽度 title），替换/写入宽度
+    const esc = src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(!\\[[^\\]]*\\]\\(\\s*${esc})(\\s+"[^"]*")?(\\s*\\))`);
+    const target = activeTab.mode === "edit" ? "draft" : "data.content";
+    const text = target === "draft" ? activeTab.draft : activeTab.data.content;
+    if (!re.test(text)) return;
+    const next = text.replace(re, `$1 "${w}"$3`);
+    if (target === "draft") {
+      updateTab(activeTab.path, { draft: next });
+    } else {
+      // 阅读模式：直接改内容并落盘（保持阅读流畅，不强制切编辑）
+      updateTab(activeTab.path, { data: { ...activeTab.data, content: next } });
+      void fetch("/api/docs/write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: activeTab.data.path,
+          content: next,
+          expectMtime: activeTab.savedMtime,
+          repo: repo ?? undefined,
+        }),
+      })
+        .then(async (r) => {
+          const j = (await r.json()) as WriteResp;
+          if (r.ok && j.mtime) {
+            updateTab(activeTab.path, { savedMtime: j.mtime, saveMsg: t.docDrawer.saveOk, saveMsgKind: "ok" });
+            cacheSetJSON(`doc-read:${repo ?? "default"}:${activeTab.data!.path}`, {
+              ...activeTab.data,
+              content: next,
+              mtime: j.mtime,
+              bytes: j.bytes ?? activeTab.data!.bytes,
+            });
+          } else {
+            updateTab(activeTab.path, { saveMsg: t.docDrawer.saveFailed(j.error ?? ""), saveMsgKind: "err" });
+          }
+        })
+        .catch(() => {
+          updateTab(activeTab.path, { saveMsg: t.docDrawer.saveFailed("network"), saveMsgKind: "err" });
+        });
+      setTimeout(() => updateTab(activeTab.path, { saveMsg: null }), 2000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightbox, activeTab, updateTab, t, repo]);
 
   /** 网页翻译：预览模式下整篇翻译（代码块/链接/行内代码保持原样），缓存到标签页 */
   const translateDoc = useCallback(async () => {
@@ -570,14 +687,47 @@ export function DocPane({
   function jumpToHeading(h: OutlineItem, index: number) {
     if (!activeTab) return;
     if (activeTab.mode === "preview") {
-      const el = document.getElementById(`md-h-${index}`);
+      // 多个预览标签常驻且 id 相同（md-h-N），必须先限定在"当前激活标签"的容器里找，
+      // 否则 getElementById 会命中第一个（可能不可见的）标签并滚动错误文档
+      const root = document.querySelector(`[data-mdtab="${CSS.escape(activeTab.path)}"]`);
+      const el = root?.querySelector(`#md-h-${index}`);
       el?.scrollIntoView({ block: "start", behavior: "smooth" });
     } else {
       const ta = draftRef.current;
       if (!ta) return;
-      const lineH = 24;
-      ta.scrollTop = Math.max(0, h.line * lineH - 40);
+      // 软换行会让"行号×行高"严重偏离实际位置：用同款样式的镜像 div 精确测量第 N 行顶部
+      const top = measureTextareaLineTop(ta, h.line);
+      ta.scrollTop = Math.max(0, top - 40);
     }
+  }
+
+  /** 用与 textarea 相同样式的镜像 div 测量第 line 行（0 起）渲染后的顶部偏移 */
+  function measureTextareaLineTop(ta: HTMLTextAreaElement, line: number): number {
+    const cs = getComputedStyle(ta);
+    const mirror = document.createElement("div");
+    // 影响换行与行高的样式全部照搬；宽度一致才能保证折行一致
+    const KEBAB = [
+      "font-family", "font-size", "font-weight", "letter-spacing", "line-height",
+      "white-space", "word-break", "overflow-wrap", "word-spacing", "tab-size",
+      "text-transform", "text-indent", "padding", "border-width", "box-sizing", "width",
+    ];
+    mirror.style.position = "absolute";
+    mirror.style.visibility = "hidden";
+    mirror.style.top = "0";
+    mirror.style.left = "-9999px";
+    for (const k of KEBAB) mirror.style.setProperty(k, cs.getPropertyValue(k));
+    mirror.setAttribute("aria-hidden", "true");
+    const lines = ta.value.split("\n");
+    lines.forEach((ln, i) => {
+      const row = document.createElement("div");
+      row.textContent = ln.length ? ln : "\u200b";
+      mirror.appendChild(row);
+    });
+    document.body.appendChild(mirror);
+    const rows = Array.from(mirror.children) as HTMLElement[];
+    const top = rows[line]?.offsetTop ?? mirror.scrollHeight;
+    document.body.removeChild(mirror);
+    return top;
   }
 
   // 给 react-markdown 用：把相对图片路径改写到 /api/docs/asset
@@ -591,10 +741,32 @@ export function DocPane({
       if (seg === "..") parts.pop();
       else parts.push(seg);
     }
-    return `/api/docs/asset?path=${encodeURIComponent(parts.join("/"))}`;
+    return `/api/docs/asset?path=${encodeURIComponent(parts.join("/"))}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`;
   }
 
   // ---------- 编辑器：插入代码块（包裹选中文本） ----------
+  /** 插入片段后的光标/滚动恢复：值替换会让浏览器把 textarea 的滚动复位到顶部、
+   *  选区挪到 0（未聚焦状态下），插入大段内容必跳回开头。
+   *  在新值基础上：镜像测量 caret 所在行的像素位置，把该行滚回原可见位置 */
+  function restoreCaretAfterEdit(caret: number) {
+    requestAnimationFrame(() => {
+      const ta = draftRef.current;
+      if (!ta) return;
+      ta.focus({ preventScroll: true });
+      const row = Math.max(
+        0,
+        ta.value.slice(0, Math.min(caret, ta.value.length)).split("\n").length - 1,
+      );
+      const top = measureTextareaLineTop(ta, row);
+      ta.scrollTop = Math.max(0, Math.min(top - 40, ta.scrollHeight - ta.clientHeight));
+      try {
+        ta.setSelectionRange(caret, caret);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
   function insertCodeBlock() {
     const ta = draftRef.current;
     if (!ta || !activeTab) return;
@@ -605,10 +777,7 @@ export function DocPane({
     const next = activeTab.draft.slice(0, start) + snippet + activeTab.draft.slice(end);
     updateTab(activeTab.path, { draft: next });
     const caret = sel ? start + snippet.length : start + 4 + codeLang.length;
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(caret, caret);
-    });
+    restoreCaretAfterEdit(caret);
   }
 
   // ---------- 编辑器：插入表格（反馈：缺少表格插入） ----------
@@ -640,10 +809,66 @@ export function DocPane({
       tail.trim() === "" ? "" : tail.startsWith("\n\n") ? "" : tail.startsWith("\n") ? "\n" : "\n\n";
     const ins = headPad + snippet + tailPad;
     updateTab(activeTab.path, { draft: head + ins + tail });
+    const caret = start + headPad.length + snippet.length;
+    restoreCaretAfterEdit(caret);
+  }
+
+  // ---------- 编辑器：红笔/蓝笔批注（反馈：md 笔记批注快速切换字色） ----------
+  /** 语法 %%r:文字%% / %%b:文字%%（remarkPens 渲染）；开启笔后输入即带色、选中文字一键换色 */
+  const PEN_OPEN = { r: "%%r:", b: "%%b:" } as const;
+
+  // 切换标签时结束笔模式（开启笔时光标处已放入含闭合标记的空色块，文档始终良构，无需善后）
+  useEffect(() => {
+    setPen(null);
+  }, [activePath]);
+
+  /** 笔开关后的光标恢复：保持滚动位置完全不变（反馈：点击红/蓝笔后编辑区上移、正在编辑处跑出视野） */
+  function restoreCaretKeepScroll(caret: number) {
+    const ta = draftRef.current;
+    const scrollTop = ta?.scrollTop ?? 0;
     requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(start + ins.length, start + ins.length);
+      const ta2 = draftRef.current;
+      if (!ta2) return;
+      ta2.focus({ preventScroll: true });
+      try {
+        ta2.setSelectionRange(caret, caret);
+      } catch {
+        /* ignore */
+      }
+      ta2.scrollTop = scrollTop;
     });
+  }
+
+  function togglePen(c: "r" | "b") {
+    const ta = draftRef.current;
+    if (pen === c) {
+      setPen(null);
+      return;
+    }
+    if (!ta || !activeTab) {
+      setPen(c);
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    if (start !== end) {
+      // 一键换色：包裹选中文本，一次性生效后退出笔模式
+      const sel = activeTab.draft.slice(start, end);
+      const wrapped = `${PEN_OPEN[c]}${sel}%%`;
+      updateTab(activeTab.path, {
+        draft: activeTab.draft.slice(0, start) + wrapped + activeTab.draft.slice(end),
+      });
+      restoreCaretKeepScroll(start + wrapped.length);
+      setPen(null);
+    } else {
+      // 无选中：进入输入模式——光标处放入空色块（%%c:%%），后续输入落在闭合标记之前
+      const open = `${PEN_OPEN[c]}%%`;
+      updateTab(activeTab.path, {
+        draft: activeTab.draft.slice(0, start) + open + activeTab.draft.slice(end),
+      });
+      restoreCaretKeepScroll(start + PEN_OPEN[c].length);
+      setPen(c);
+    }
   }
 
   // ---------- 编辑器：Tab 缩进（反馈：Tab 插入缩进且预览中不失效） ----------
@@ -685,6 +910,39 @@ export function DocPane({
     const value = ta.value;
     const s = ta.selectionStart;
     const end = ta.selectionEnd;
+
+    // ---------- 红笔/蓝笔（反馈：切换颜色后输入文字即带色） ----------
+    // 文档里闭合标记常驻（%%c:%%），可打印字符插在光标处即落进当前色块；
+    // 光标已移出色块（后面不是 %%）时就地新开一个色块，文档始终保持良构
+    if (pen && e.key === "Escape") {
+      setPen(null);
+      return;
+    }
+    if (pen && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const closeAtCaret = value.slice(s, s + 2) === "%%";
+      const ins = closeAtCaret
+        ? e.key
+        : `${PEN_OPEN[pen]}${e.key}%%`;
+      const next = value.slice(0, s) + ins + value.slice(end);
+      // 新开色块时光标落在首字之后、闭合标记之前，后续输入继续进块
+      const caret = closeAtCaret ? s + ins.length : s + PEN_OPEN[pen].length + 1;
+      const scrollTop = ta.scrollTop;
+      updateTab(activeTab.path, { draft: next });
+      pendingCaretRef.current = { pos: caret, sel: caret, scrollTop };
+      return;
+    }
+    // 笔模式下回车：本行色块随闭合标记自然收束，换行后续开同一支笔
+    if (pen && e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && s === end) {
+      e.preventDefault();
+      const open = `${PEN_OPEN[pen]}%%`;
+      const next = value.slice(0, s) + "\n" + open + value.slice(end);
+      const caret = s + 1 + PEN_OPEN[pen].length;
+      const scrollTop = ta.scrollTop;
+      updateTab(activeTab.path, { draft: next });
+      pendingCaretRef.current = { pos: caret, sel: caret, scrollTop };
+      return;
+    }
 
     // ---------- Enter：自动续写引用/列表前缀（反馈：嵌套结构不用手写前缀） ----------
     if (
@@ -794,6 +1052,66 @@ export function DocPane({
   }
 
   // ---------- 编辑器：粘贴图片 → 上传到 <笔记目录>/images/ 并插入引用 ----------
+
+  /** 大图压缩（反馈：上传图片报错，服务器 body/内存受限）：>1.5MB 的位图缩到 ≤1600px 宽再传。
+   *  SVG/GIF 直接原样上传；压缩失败也回退原图（尽力而为） */
+  async function compressPastedImage(file: File): Promise<{ dataUrl: string; ext: string }> {
+    const extFromType = (file.type.split("/")[1] ?? "png").replace("jpeg", "jpg");
+    const rawUrl = await new Promise<string>((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result));
+      fr.onerror = () => rej(new Error("read clipboard image failed"));
+      fr.readAsDataURL(file);
+    });
+    if (file.size <= 1_500_000 || extFromType === "svg" || extFromType === "gif") {
+      return { dataUrl: rawUrl, ext: extFromType };
+    }
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res();
+        img.onerror = () => rej(new Error("decode failed"));
+        img.src = rawUrl;
+      });
+      const maxW = 1600;
+      const scale = Math.min(1, maxW / (img.naturalWidth || maxW));
+      if (scale >= 1) return { dataUrl: rawUrl, ext: extFromType };
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return { dataUrl: rawUrl, ext: extFromType };
+      // 有透明通道的 png 保持 png（白底填充会毁截图叠加层）；其余转 jpeg 大幅减小体积
+      const keepPng = extFromType === "png" && /^data:image\/png/i.test(rawUrl) && hasAlpha(ctx, img, canvas);
+      const outType = keepPng ? "image/png" : "image/jpeg";
+      if (!keepPng) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const out = canvas.toDataURL(outType, 0.85);
+      // 压缩反而更大（罕见）→ 回退原图
+      return out.length < rawUrl.length ? { dataUrl: out, ext: keepPng ? "png" : "jpg" } : { dataUrl: rawUrl, ext: extFromType };
+    } catch {
+      return { dataUrl: rawUrl, ext: extFromType };
+    }
+  }
+
+  /** 采样检测图片是否有透明像素（决定 png 是否保真） */
+  function hasAlpha(ctx: CanvasRenderingContext2D, img: HTMLImageElement, canvas: HTMLCanvasElement): boolean {
+    try {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 3; i < d.length; i += 4 * 97) {
+        if (d[i] < 250) return true;
+      }
+    } catch {
+      /* 跨域等：按有透明处理，走 png */
+      return true;
+    }
+    return false;
+  }
+
   function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {    const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
       f.type.startsWith("image/"),
     );
@@ -817,22 +1135,30 @@ export function DocPane({
     if (!IMAGE_EXT_RE.test(name)) name += `.${extFromType}`;
     updateTab(path, { saving: true });
     try {
-      const dataUrl = await new Promise<string>((res, rej) => {
-        const fr = new FileReader();
-        fr.onload = () => res(String(fr.result));
-        fr.onerror = () => rej(new Error("read clipboard image failed"));
-        fr.readAsDataURL(file);
-      });
+      const { dataUrl, ext } = await compressPastedImage(file);
+      // 名称扩展名跟随实际压缩结果（png→jpg 转换时修正）
+      name = name.replace(/\.[^.]+$/, "") + `.${ext}`;
       const dataBase64 = dataUrl.split(",")[1] ?? "";
       const r = await fetch("/api/docs/upload-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dir: tab.data.dir, name, dataBase64 }),
+        body: JSON.stringify({ dir: tab.data.dir, name, dataBase64, repo: repo ?? undefined }),
       });
-      const json = (await r.json()) as { path?: string; error?: string };
+      // 服务端可能返回 HTML 错误页（网关 413/5xx 等）——直接 r.json() 会抛
+      // "Unexpected token '<'"（反馈：上传图片报错）。解析失败给可理解的提示。
+      let json: { path?: string; error?: string } = {};
+      let parseFailed = false;
+      try {
+        json = (await r.json()) as { path?: string; error?: string };
+      } catch {
+        parseFailed = true;
+      }
       if (!r.ok || !json.path) {
+        const reason = parseFailed
+          ? t.docDrawer.pasteImageServerError(r.status)
+          : json.error ?? r.statusText;
         updateTab(path, {
-          saveMsg: t.docDrawer.pasteImageFailed(json.error ?? r.statusText),
+          saveMsg: t.docDrawer.pasteImageFailed(reason),
           saveMsgKind: "err",
           saving: false,
         });
@@ -1141,7 +1467,7 @@ export function DocPane({
               aria-hidden={tb.path !== activePath}
             >
               <div className="h-full min-h-0">
-                <PdfViewer path={tb.path} active={tb.path === activePath} />
+                <PdfViewer path={tb.path} active={tb.path === activePath} repo={repo} />
               </div>
             </div>
           ) : null,
@@ -1156,7 +1482,7 @@ export function DocPane({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`/api/docs/asset?path=${encodeURIComponent(tb.path)}`}
+                src={`/api/docs/asset?path=${encodeURIComponent(tb.path)}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`}
                 alt={tb.path}
                 className="max-w-full max-h-full object-contain"
               />
@@ -1169,6 +1495,7 @@ export function DocPane({
           tb.data && tb.mode === "preview" ? (
             <div
               key={tb.path}
+              data-mdtab={tb.path}
               className={
                 "absolute inset-0 overflow-y-auto " +
                 (tb.path === activePath
@@ -1185,11 +1512,11 @@ export function DocPane({
                 ) : (
                   <div className="prose-tutor">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
+                      remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkPens, remarkCallouts]}
                       rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
-                      components={buildMarkdownComponents(rewriteAsset)}
+                       components={buildMarkdownComponents(rewriteAsset, undefined, openImage)}
                     >
-                      {preprocessFigRefs(tb.transView ? tb.translated ?? "" : tb.data.content)}
+                      {preprocessNote(tb.transView ? tb.translated ?? "" : tb.data.content)}
                     </ReactMarkdown>
                   </div>
                 )}
@@ -1238,6 +1565,34 @@ export function DocPane({
                     >
                       {t.docDrawer.insertTable}
                     </button>
+                    {/* 红笔/蓝笔批注（反馈：md 批注快速切换字色）：
+                        选中文字点击即一键换色；无选中则开启后直接输入即带色，Esc 或再点一次结束 */}
+                    <span className="flex items-center gap-1 ml-1">
+                      <button
+                        onClick={() => togglePen("r")}
+                        title={t.docDrawer.penRed}
+                        className={
+                          "p-1.5 rounded border flex items-center " +
+                          (pen === "r"
+                            ? "border-red-500 bg-red-50 dark:bg-red-950/40"
+                            : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")
+                        }
+                      >
+                        <PenLine className="w-3.5 h-3.5 text-red-600" />
+                      </button>
+                      <button
+                        onClick={() => togglePen("b")}
+                        title={t.docDrawer.penBlue}
+                        className={
+                          "p-1.5 rounded border flex items-center " +
+                          (pen === "b"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40"
+                            : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800")
+                        }
+                      >
+                        <PenLine className="w-3.5 h-3.5 text-blue-600" />
+                      </button>
+                    </span>
                     {/* 实时预览开关（反馈：编辑时插入的图片要立即可见） */}
                     <button
                       onClick={() => setLivePreview((v) => !v)}
@@ -1258,19 +1613,23 @@ export function DocPane({
                       onChange={(e) => updateTab(tb.path, { draft: e.target.value })}
                       onPaste={onEditorPaste}
                       onKeyDown={onEditorKeyDown}
+                      onClick={syncPreviewToCaret}
                       spellCheck={false}
                       className="flex-1 min-w-0 min-h-[280px] p-4 sm:p-5 text-[16px] sm:text-sm font-mono leading-relaxed bg-transparent outline-none resize-none"
                       placeholder=""
                     />
                     {isActive && livePreview && (
-                      <div className="hidden md:block w-1/2 min-w-0 overflow-y-auto border-l border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
+                      <div
+                        ref={previewRef}
+                        className="hidden md:block w-1/2 min-w-0 overflow-y-auto border-l border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950"
+                      >
                         <div className="prose-tutor">
                           <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkCallouts]}
+                            remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkHighlight, remarkPens, remarkCallouts]}
                             rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeFigDefs]}
-                            components={buildMarkdownComponents(rewriteAsset, jumpToEditLine)}
+                             components={buildMarkdownComponents(rewriteAsset, jumpToEditLine, openImage)}
                           >
-                            {preprocessFigRefs(previewDraft)}
+                            {preprocessNote(previewDraft)}
                           </ReactMarkdown>
                         </div>
                       </div>
@@ -1294,6 +1653,14 @@ export function DocPane({
           <span>{t.docDrawer.updatedAt(new Date(activeTab.data.mtime).toLocaleString())}</span>
         </footer>
       )}
+
+      {/* 图片 lightbox：点开预览 / 调宽度 / 固定桌面（反馈） */}
+      <ImageLightbox
+        state={lightbox}
+        canApply={!!activeTab?.data}
+        onClose={() => setLightbox(null)}
+        onApplyWidth={applyImageWidth}
+      />
     </div>
   );
 
@@ -1324,6 +1691,8 @@ function buildMarkdownComponents(
   rewriteAsset: (src: string) => string,
   /** 传入时：实时预览里点击块级元素 → 跳到左侧编辑器对应行（反馈：预览点击定位编辑） */
   jumpToEdit?: (line: number) => void,
+  /** 传入时：点击图片打开 lightbox（反馈：图片可点开、调大小、固定桌面） */
+  onOpenImage?: (st: ImageLightboxState) => void,
 ): Components {
   let headingIdx = -1;
   const heading = (Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") =>
@@ -1334,6 +1703,7 @@ function buildMarkdownComponents(
         <Tag
           id={`md-h-${headingIdx}`}
           className="scroll-mt-2"
+          data-src-line={line ?? undefined}
           onClick={jumpToEdit && line ? () => jumpToEdit(line) : undefined}
           style={jumpToEdit && line ? { cursor: "pointer" } : undefined}
         >
@@ -1342,13 +1712,14 @@ function buildMarkdownComponents(
       );
     };
   /** 块级元素（p/li）包装：点击 → 跳编辑器对应行 */
-  const jumpBlock = <P extends { node?: unknown }>(Tag: "p" | "li") => {
+  const jumpBlock = <P extends { node?: unknown }>(Tag: "p" | "li" | "tr") => {
     const Comp = function JumpBlock(props: P & { children?: React.ReactNode }) {
       const { node, ...rest } = props as P & { node?: { position?: { start?: { line?: number } } }; children?: React.ReactNode };
       const line = node?.position?.start?.line ?? null;
       return (
         <Tag
           {...(rest as unknown as Record<string, unknown>)}
+          data-src-line={line ?? undefined}
           onClick={jumpToEdit && line ? () => jumpToEdit(line) : undefined}
           style={jumpToEdit && line ? { cursor: "pointer" } : undefined}
         >
@@ -1359,7 +1730,8 @@ function buildMarkdownComponents(
     return Comp;
   };
   const components: Components = {
-    ...markdownCodeComponents,
+    // 实时预览传 jumpToEdit：点击代码块跳到编辑器对应行（语言标签/折叠仍然生效）
+    ...(jumpToEdit ? codeComponentsWithJump(jumpToEdit) : markdownCodeComponents),
     h1: heading("h1"),
     h2: heading("h2"),
     h3: heading("h3"),
@@ -1367,11 +1739,28 @@ function buildMarkdownComponents(
     h5: heading("h5"),
     h6: heading("h6"),
     img: ({ src, alt, title, ...rest }) => {
+      // title 为纯数字/带 px → 指定显示宽度（反馈：图片插入后过大，宽度可调）
+      // 语法：![alt](src "600") 或 ![alt](src "600px")
+      const wMatch =
+        typeof title === "string" && !title.startsWith("figdef:")
+          ? title.trim().match(/^(\d{2,4})(?:px)?$/)
+          : null;
+      const fixedW = wMatch ? Math.min(Number(wMatch[1]), 2000) : null;
       const imgEl = (
         <img
           src={typeof src === "string" ? rewriteAsset(src) : undefined}
           alt={alt ?? ""}
-          style={{ maxWidth: "100%", height: "auto" }}
+          style={{
+            maxWidth: "100%",
+            height: "auto",
+            ...(fixedW ? { width: `${fixedW}px` } : null),
+          }}
+          onClick={
+            onOpenImage && typeof src === "string"
+              ? () => onOpenImage({ src: rewriteAsset(src), originalSrc: src, alt })
+              : undefined
+          }
+          className={onOpenImage ? "cursor-zoom-in" : undefined}
           {...rest}
         />
       );
@@ -1407,8 +1796,9 @@ function buildMarkdownComponents(
   if (!jumpToEdit) return components;
   return {
     ...components,
-    // 点击预览块级元素跳到编辑器对应行
+    // 点击预览块级元素跳到编辑器对应行（表格：按行 tr 精确定位）
     p: jumpBlock("p"),
     li: jumpBlock("li"),
+    tr: jumpBlock("tr"),
   };
 }

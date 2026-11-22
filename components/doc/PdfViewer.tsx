@@ -121,6 +121,59 @@ function mergeRects<T extends { x: number; y: number; w: number; h: number }>(re
   return out;
 }
 
+/** 命中检测：点在标注矩形上 → 返回该标注（占位页与渲染页共用） */
+function hitAnnotation(
+  annotations: PdfAnnotation[],
+  pageNo: number,
+  nx: number,
+  ny: number,
+): PdfAnnotation | null {
+  return (
+    annotations
+      .filter((a) => a.page === pageNo)
+      .find((a) =>
+        a.rects.some((r) => nx >= r.x && nx <= r.x + r.w && ny >= r.y && ny <= r.y + r.h),
+      ) ?? null
+  );
+}
+
+/** 标注层（纯视觉）：渲染某页的高亮/下划线矩形。
+ *  渲染页与"滚出视口的占位页"共用（反馈：PDF 位置改变后标注不能跟着消失） */
+function AnnotationLayer({ annotations, pageNo }: { annotations: PdfAnnotation[]; pageNo: number }) {
+  const pageAnns = annotations.filter((a) => a.page === pageNo);
+  return (
+    <div className="absolute inset-0 z-20 pointer-events-none">
+      {pageAnns.map((a) =>
+        mergeRects(a.rects).map((r, i) => (
+          <div
+            key={`${a.id}-${i}`}
+            className="absolute rounded-[2px]"
+            style={
+              (a.kind ?? "highlight") === "underline"
+                ? {
+                    left: `${r.x * 100}%`,
+                    top: `${r.y * 100}%`,
+                    width: `${r.w * 100}%`,
+                    height: `${r.h * 100}%`,
+                    background: "transparent",
+                    borderBottom: `2.5px solid ${colorAlpha(a.color, 0.95)}`,
+                  }
+                : {
+                    left: `${r.x * 100}%`,
+                    top: `${r.y * 100}%`,
+                    width: `${r.w * 100}%`,
+                    height: `${r.h * 100}%`,
+                    background: colorAlpha(a.color, 0.38),
+                    borderBottom: `2px solid ${colorAlpha(a.color, 0.9)}`,
+                  }
+            }
+          />
+        )),
+      )}
+    </div>
+  );
+}
+
 function PdfPageContent({
   pdfjs,
   doc,
@@ -129,6 +182,7 @@ function PdfPageContent({
   annotations,
   onCreate,
   onToggleAnnotation,
+  onRatio,
 }: {
   pdfjs: any;
   doc: any;
@@ -138,6 +192,8 @@ function PdfPageContent({
   onCreate: (sel: { rects: PdfAnnotation["rects"]; quote: string; x: number; y: number } | null) => void;
   /** 点击命中标注 → 打开编辑气泡；点空白 → 关闭 */
   onToggleAnnotation: (a: PdfAnnotation | null, x: number, y: number) => void;
+  /** 页面真实宽高比上报（供占位页用真实比例，而不是 1.3 估算——比例错会让占位页标注/占位高度错位） */
+  onRatio?: (pageNo: number, ratio: number) => void;
 }) {
   const { t } = useLang();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -163,6 +219,7 @@ function PdfPageContent({
         // 渲染倍率 渲染 1.75 上限（扫描页大图解码是首屏慢的主因；1.75 在清晰度/速度间折中）
         const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
         const base = page.getViewport({ scale: 1 });
+        onRatio?.(pageNo, base.height / base.width);
         const scale = (width * dpr) / base.width;
         const vp = page.getViewport({ scale });
         const canvas = canvasRef.current;
@@ -300,8 +357,6 @@ function PdfPageContent({
     onToggleAnnotation(hit ?? null, e.clientX, e.clientY);
   }
 
-  const pageAnns = annotations.filter((a) => a.page === pageNo);
-
   return (
     <div
       ref={wrapRef}
@@ -342,35 +397,7 @@ function PdfPageContent({
         </div>
       )}
       {/* 标注层（纯视觉，点击命中由 handleClick 处理，不挡文字选择） */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        {pageAnns.map((a) =>
-          mergeRects(a.rects).map((r, i) => (
-            <div
-              key={`${a.id}-${i}`}
-              className="absolute rounded-[2px]"
-              style={
-                (a.kind ?? "highlight") === "underline"
-                  ? {
-                      left: `${r.x * 100}%`,
-                      top: `${r.y * 100}%`,
-                      width: `${r.w * 100}%`,
-                      height: `${r.h * 100}%`,
-                      background: "transparent",
-                      borderBottom: `2.5px solid ${colorAlpha(a.color, 0.95)}`,
-                    }
-                  : {
-                      left: `${r.x * 100}%`,
-                      top: `${r.y * 100}%`,
-                      width: `${r.w * 100}%`,
-                      height: `${r.h * 100}%`,
-                      background: colorAlpha(a.color, 0.38),
-                      borderBottom: `2px solid ${colorAlpha(a.color, 0.9)}`,
-                    }
-              }
-            />
-          )),
-        )}
-      </div>
+      <AnnotationLayer annotations={annotations} pageNo={pageNo} />
       {rendering && (
         <div className="absolute inset-0 flex items-center justify-center text-zinc-300 bg-white/60">
           <Loader2 className="w-5 h-5 animate-spin" />
@@ -412,7 +439,7 @@ function OutlineNode({
   );
 }
 
-export function PdfViewer({ path, active = true }: { path: string; active?: boolean }) {
+export function PdfViewer({ path, active = true, repo }: { path: string; active?: boolean; repo?: string | null }) {
   const { t, lang } = useLang();
   const [pdfjs, setPdfjs] = useState<any>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -444,6 +471,8 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageEls = useRef<Record<number, HTMLDivElement | null>>({});
+  /** 每页真实宽高比（首次渲染后记录）：占位页用它，比例/标注不再错位（反馈：标注跟随） */
+  const pageRatioRef = useRef<Record<number, number>>({});
   const annsRef = useRef<PdfAnnotation[]>([]);
   const dirtyRef = useRef(false);
 
@@ -459,7 +488,7 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
         if (cancelled) return;
         setPdfjs(lib);
         const loadingTask = lib.getDocument({
-          url: `/api/docs/asset?path=${encodeURIComponent(path)}`,
+          url: `/api/docs/asset?path=${encodeURIComponent(path)}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`,
           // 超大扫描版 PDF（反馈：打开慢）：按需取 Range 分片、不要后台拉全文
           disableAutoFetch: true,
           rangeChunkSize: 262144,
@@ -507,21 +536,21 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
       cancelled = true;
       try { d?.destroy?.(); } catch { /* ignore */ }
     };
-  }, [path]);
+  }, [path, repo]);
 
   /* 加载标注 */
   useEffect(() => {
     setAnns(null);
     setDirty(false);
     dirtyRef.current = false;
-    fetch(`/api/docs/annotations?path=${encodeURIComponent(path)}`)
+    fetch(`/api/docs/annotations?path=${encodeURIComponent(path)}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`)
       .then((r) => r.json())
       .then((j: { annotations?: PdfAnnotation[] }) => {
         setAnns(j.annotations ?? []);
         annsRef.current = j.annotations ?? [];
       })
       .catch(() => setAnns([]));
-  }, [path]);
+  }, [path, repo]);
 
   const updateAnns = useCallback((next: PdfAnnotation[]) => {
     annsRef.current = next;
@@ -539,7 +568,7 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
       const r = await fetch("/api/docs/annotations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path, annotations: annsRef.current }),
+        body: JSON.stringify({ path, annotations: annsRef.current, repo: repo ?? undefined }),
       });
       if (!r.ok) throw new Error(await r.text());
       setSaveState("ok");
@@ -549,7 +578,7 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
       setDirty(true);
       setSaveState("err");
     }
-  }, [path]);
+  }, [path, repo]);
 
   /* 变更后 1.2s 自动保存；卸载时兜底保存 */
   useEffect(() => {
@@ -564,12 +593,12 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
         fetch("/api/docs/annotations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path, annotations: annsRef.current }),
+          body: JSON.stringify({ path, annotations: annsRef.current, repo: repo ?? undefined }),
           keepalive: true,
         });
       }
     };
-  }, [path]);
+  }, [path, repo]);
 
   /* 容器宽度 → 页面宽度。
      隐藏（display:none）时 clientWidth=0 → 不能把 width 缩成 280，
@@ -632,15 +661,20 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
     }
   }, [curPage, zoom, doc, path]);
 
+  /** 计算某页顶部在滚动容器内的目标 scrollTop（rect 差值，不受 offsetParent/工具栏高度影响） */
+  const pageTopInRoot = useCallback((root: HTMLElement, el: HTMLElement) => {
+    return el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
+  }, []);
+
   /** 把滚动容器恢复到 (page, offY)：页顶 + 页内偏移；供进文档与回标签共用 */
   const restoreScroll = useCallback((page: number, offY: number) => {
     const root = scrollRef.current;
     const el = pageEls.current[page];
     if (!root || !el) return;
-    root.scrollTop = Math.max(0, el.offsetTop + offY);
+    root.scrollTop = Math.max(0, pageTopInRoot(root, el) + offY);
     curPageRef.current = page;
     setCurPage(page);
-  }, []);
+  }, [pageTopInRoot]);
 
   /** 回到激活状态（false→true，如切标签回来）：恢复离开时的滚动位置
      （display:none 切换/浏览器会丢掉 scrollTop；visibility 也可能在部分容器丢） */
@@ -656,10 +690,18 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
   }, [active, doc, restoreScroll]);
 
   const setPage = (p: number) => {
-    curPageRef.current = p;
-    setCurPage(p);
-    const el = pageEls.current[p];
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    const clamped = Math.min(Math.max(1, p), numPages || 1);
+    curPageRef.current = clamped;
+    setCurPage(clamped);
+    const root = scrollRef.current;
+    const el = pageEls.current[clamped];
+    if (root && el) {
+      // 直接算 scrollTop，不用 scrollIntoView：它可能牵连外层滚动容器、
+      // 且 lazily 渲染占位页高度是估算值；立即定位（不平滑），
+      // 避免平滑滚动途中相邻页渲染撑高/缩矮导致过冲，落点更准
+      const top = pageTopInRoot(root, el);
+      root.scrollTop = Math.max(0, top);
+    }
   };
 
   /* 当前页跟踪（反馈：页码显示不随滚动更新）：视口上 1/3 处所在的页；
@@ -677,8 +719,8 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
         if (r.top <= y && r.bottom > y) {
           const p = Number(el.dataset.page);
           if (root.scrollTop >= 0) {
-            // 页内偏移 = 滚动位置 − 该页顶的滚动位置（随布局缩放仍能对应）
-            offYRef.current = Math.max(0, root.scrollTop - el.offsetTop);
+            // 页内偏移 = 当前滚动位置 − 该页顶的滚动位置（随布局缩放仍能对应）
+            offYRef.current = Math.max(0, root.scrollTop - pageTopInRoot(root, el));
           }
           if (p && p !== curPageRef.current) {
             curPageRef.current = p;
@@ -701,7 +743,7 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
       root.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [numPages, doc]);
+  }, [numPages, doc, pageTopInRoot]);
 
   /** 子页回调：null=清除待选区；x/y>0 表示来自右键（打开菜单），否则仅更新待选区 */
   const handlePending = useCallback(
@@ -897,12 +939,25 @@ export function PdfViewer({ path, active = true }: { path: string; active?: bool
                   annotations={anns}
                   onCreate={(sel) => handlePending(i + 1, sel)}
                   onToggleAnnotation={(a, x, y) => setPop(a ? { ann: a, x, y } : null)}
+                  onRatio={(p, r) => { pageRatioRef.current[p] = r; }}
                 />
               ) : (
+                /* 占位页（反馈：位置改变后标注不能消失）：
+                   - 高度用该页真实宽高比（渲染过一次后记录），不再是 1.3 估算 → 滚动/翻页落点准
+                   - 仍渲染标注层并支持点击命中，标注在占位页上也持续可见 */
                 <div
-                  className="bg-white shadow-md mx-auto flex items-center justify-center text-zinc-300"
-                  style={{ width: width * zoom, height: width * zoom * 1.3 }}
+                  className="relative bg-white shadow-md mx-auto flex items-center justify-center text-zinc-300"
+                  style={{ width: width * zoom, height: width * zoom * (pageRatioRef.current[i + 1] ?? 1.3) }}
+                  onClick={(e) => {
+                    if (!anns.some((a) => a.page === i + 1)) return;
+                    const box = e.currentTarget.getBoundingClientRect();
+                    const nx = (e.clientX - box.left) / box.width;
+                    const ny = (e.clientY - box.top) / box.height;
+                    const hit = hitAnnotation(anns, i + 1, nx, ny);
+                    setPop(hit ? { ann: hit, x: e.clientX, y: e.clientY } : null);
+                  }}
                 >
+                  <AnnotationLayer annotations={anns} pageNo={i + 1} />
                   <FileText className="w-6 h-6" />
                 </div>
               )}

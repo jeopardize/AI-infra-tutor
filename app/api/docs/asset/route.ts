@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from "node:fs";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { resolveSafe } from "@/lib/docs/fs";
+import { getLibraryRepo } from "@/lib/docs/repos";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const rel = url.searchParams.get("path") ?? "";
   if (!rel) return new Response("missing path", { status: 400 });
-  const abs = resolveSafe(rel);
+  const repo = await getLibraryRepo(url.searchParams.get("repo"));
+  if (!repo) return new Response("unknown repo", { status: 404 });
+  const abs = resolveSafe(rel, repo.root);
   if (!abs) return new Response("invalid path", { status: 400 });
 
   let stat;

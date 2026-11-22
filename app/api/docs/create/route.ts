@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { repoFromRequest } from "@/lib/docs/repos";
 import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -9,6 +10,8 @@ interface CreateBody {
   path: string;
   /** 可选初始内容；默认空 + 一行标题（基于文件名） */
   content?: string;
+  /** 多仓库标识（可选） */
+  repo?: string;
 }
 
 export async function POST(req: Request) {
@@ -27,7 +30,9 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const abs = resolveSafe(body.path);
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
+  const abs = resolveSafe(body.path, repo.root);
   if (!abs) return Response.json({ error: "invalid path" }, { status: 400 });
 
   // 已存在则拒绝（避免覆盖）
@@ -48,7 +53,7 @@ export async function POST(req: Request) {
   const initial = body.content ?? `# ${title}\n\n`;
   await fs.writeFile(abs, initial, "utf-8");
   // 新建笔记后自动 commit + push 到 GitHub
-  await syncPushNotes(`web: create ${body.path}`);
+  await syncPushNotes(`web: create ${body.path}`, repo.root);
   const stat = await fs.stat(abs);
 
   return Response.json({

@@ -108,8 +108,9 @@ function splitMarkText(value: string): PhrasingContent[] {
   return out;
 }
 
-/** 高亮内部再解析一层行内标记：**粗体**、*斜体*、`代码`（支持组合如 ==**x**==） */
-function parseInlineMarks(text: string): PhrasingContent[] {
+/** 高亮内部再解析一层行内标记：**粗体**、*斜体*、`代码`（支持组合如 ==**x**==）；
+ *  红蓝笔插件（pens.ts）复用 */
+export function parseInlineMarks(text: string): PhrasingContent[] {
   const out: PhrasingContent[] = [];
   const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/g;
   let last = 0;

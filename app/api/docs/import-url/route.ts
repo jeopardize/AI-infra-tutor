@@ -3,7 +3,8 @@ import path from "node:path";
 import https from "node:https";
 import http from "node:http";
 import dns from "node:dns";
-import { libraryRoot, resolveSafe } from "@/lib/docs/fs";
+import { repoFromRequest } from "@/lib/docs/repos";
+import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
 export const runtime = "nodejs";
@@ -124,13 +125,15 @@ function download(urlStr: string): Promise<{ status: number; location: string | 
 }
 
 export async function POST(req: Request) {
-  let body: { url?: string; dir?: string; name?: string };
+  let body: { url?: string; dir?: string; name?: string; repo?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return Response.json({ error: "invalid json" }, { status: 400 });
   }
   if (!body.url) return Response.json({ error: "url required" }, { status: 400 });
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
 
   // 逐跳重定向校验，防 SSRF
   let currentUrl: URL;
@@ -184,22 +187,21 @@ export async function POST(req: Request) {
   }
 
   // 目标目录（可选，须在笔记库内）
-  const root = libraryRoot();
-  let dirAbs = root;
+  let dirAbs = repo.root;
   const dir = (body.dir ?? "").replace(/^\/+|\/+$/g, "");
   if (dir) {
-    const safe = resolveSafe(dir);
+    const safe = resolveSafe(dir, repo.root);
     if (!safe) return Response.json({ error: "invalid dir" }, { status: 400 });
     await fs.mkdir(safe, { recursive: true });
     dirAbs = safe;
   }
   const name = sanitizeName(body.name || currentUrl.pathname.split("/").pop() || "imported.pdf");
   const rel = dir ? `${dir}/${name}` : name;
-  const abs = resolveSafe(rel);
+  const abs = resolveSafe(rel, repo.root);
   if (!abs) return Response.json({ error: "invalid path" }, { status: 400 });
   await fs.writeFile(abs, buf);
   try {
-    await syncPushNotes(`web: import pdf ${rel}`);
+    await syncPushNotes(`web: import pdf ${rel}`, repo.root);
   } catch { /* 尽力而为，失败不影响本地入库 */ }
   return Response.json({ path: rel, bytes: buf.length });
 }

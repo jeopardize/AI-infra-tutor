@@ -64,8 +64,9 @@ EOS
 )" >/dev/null 2>&1 || fail "备用目录准备失败"
 
 # ---------- 3. rsync 产物（.next、public、package 描述文件；不含 .env/node_modules/源码） ----------
+# .next/dev 是本地 next dev 的开发产物（可能上 GB），服务器用不到，排除以省流量
 say "rsync 产物 → 备用目录…"
-rsync -az --delete .next/ "$SERVER:$O/.next/" || fail "rsync .next 失败"
+rsync -az --delete --exclude=dev .next/ "$SERVER:$O/.next/" || fail "rsync .next 失败"
 rsync -az --delete public/ "$SERVER:$O/public/" 2>/dev/null || true
 rsync -az package.json package-lock.json next.config.ts "$SERVER:$O/" || fail "rsync 配置失败"
 ssh -o ConnectTimeout=20 "$SERVER" "touch $O/.env" # .env 已从在线目录继承；确保存在

@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { repoFromRequest } from "@/lib/docs/repos";
 import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -10,6 +11,8 @@ interface MoveBody {
   path: string;
   /** 目标文件夹相对路径（"" 表示根目录） */
   targetDir: string;
+  /** 多仓库标识（可选） */
+  repo?: string;
 }
 
 export async function POST(req: Request) {
@@ -22,14 +25,16 @@ export async function POST(req: Request) {
   if (!body.path || typeof body.targetDir !== "string") {
     return Response.json({ error: "path and targetDir required" }, { status: 400 });
   }
-  const srcAbs = resolveSafe(body.path);
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
+  const srcAbs = resolveSafe(body.path, repo.root);
   if (!srcAbs) return Response.json({ error: "invalid source path" }, { status: 400 });
 
   const stat = await fs.stat(srcAbs).catch(() => null);
   if (!stat) return Response.json({ error: "源不存在" }, { status: 404 });
 
   const targetDir = body.targetDir.replace(/^\/*|\/*$/g, "");
-  const targetDirAbs = targetDir ? resolveSafe(targetDir) : resolveSafe(".");
+  const targetDirAbs = targetDir ? resolveSafe(targetDir, repo.root) : resolveSafe(".", repo.root);
   if (targetDirAbs === null) return Response.json({ error: "invalid target dir" }, { status: 400 });
 
   const targetDirStat = await fs.stat(targetDirAbs).catch(() => null);
@@ -44,7 +49,7 @@ export async function POST(req: Request) {
   }
 
   // 目标已存在同名文件/文件夹
-  const newAbs = resolveSafe(newRel)!;
+  const newAbs = resolveSafe(newRel, repo.root)!;
   const exists = await fs.stat(newAbs).catch(() => null);
   if (exists) return Response.json({ error: "目标文件夹下已存在同名文件/文件夹" }, { status: 409 });
 
@@ -61,6 +66,6 @@ export async function POST(req: Request) {
   } catch (err) {
     return Response.json({ error: (err as Error).message }, { status: 500 });
   }
-  await syncPushNotes(`web: move ${body.path} -> ${newRel}`);
+  await syncPushNotes(`web: move ${body.path} -> ${newRel}`, repo.root);
   return Response.json({ ok: true, path: newRel });
 }

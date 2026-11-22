@@ -24,9 +24,9 @@ export function notesRepoRoot(): string {
   return path.join(os.homedir(), "Documents", "knowlege_library");
 }
 
-function git(cwd: string, args: string[]): Promise<string> {
+export function git(cwd: string, args: string[], timeoutMs = 60_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = spawn("git", args, { cwd, timeout: 60_000 });
+    const p = spawn("git", args, { cwd, timeout: timeoutMs });
     let out = "";
     let err = "";
     p.stdout.on("data", (d) => (out += d));
@@ -48,9 +48,10 @@ async function isRepo(root: string): Promise<boolean> {
   }
 }
 
-/** 读取前同步：pull 远端最新（尽量 fast-forward，失败不影响读取本地内容） */
-export async function syncPullNotes(): Promise<void> {
-  const root = notesRepoRoot();
+/** 读取前同步：pull 远端最新（尽量 fast-forward，失败不影响读取本地内容）。
+ *  多仓库：传入对应仓库的本地根目录；缺省为默认笔记库。 */
+export async function syncPullNotes(rootOverride?: string): Promise<void> {
+  const root = rootOverride ?? notesRepoRoot();
   if (!(await isRepo(root))) return;
   try {
     await git(root, ["pull", "--ff-only", "origin", "HEAD"]);
@@ -68,8 +69,8 @@ export interface ForcePullResult {
 /** 用户主动触发的强制拉取：GitHub 远端为准。
  *  先 fetch，再尝试 ff 合并；本地已分叉（本地领先提交或历史不一致）时
  *  reset --hard 到远端并如实告知（之前未 push 成功的本地提交会丢失）。 */
-export async function forcePullNotes(): Promise<ForcePullResult> {
-  const root = notesRepoRoot();
+export async function forcePullNotes(rootOverride?: string): Promise<ForcePullResult> {
+  const root = rootOverride ?? notesRepoRoot();
   if (!(await isRepo(root))) {
     return { mode: "unchanged", detail: "笔记库目录不是 git 仓库" };
   }
@@ -102,9 +103,9 @@ export async function forcePullNotes(): Promise<ForcePullResult> {
   }
 }
 
-/** 写操作后同步：add + commit + push（尽力而为） */
-export async function syncPushNotes(message: string): Promise<void> {
-  const root = notesRepoRoot();
+/** 写操作后同步：add + commit + push（尽力而为）。多仓库：传入对应仓库根目录。 */
+export async function syncPushNotes(message: string, rootOverride?: string): Promise<void> {
+  const root = rootOverride ?? notesRepoRoot();
   if (!(await isRepo(root))) return;
   try {
     await git(root, ["add", "-A"]);

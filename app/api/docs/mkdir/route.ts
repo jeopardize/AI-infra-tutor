@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { repoFromRequest } from "@/lib/docs/repos";
 import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -6,6 +7,8 @@ export const runtime = "nodejs";
 
 interface MkdirBody {
   path: string;
+  /** 多仓库标识（可选） */
+  repo?: string;
 }
 
 export async function POST(req: Request) {
@@ -25,7 +28,9 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const abs = resolveSafe(body.path);
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
+  const abs = resolveSafe(body.path, repo.root);
   if (!abs) return Response.json({ error: "invalid path" }, { status: 400 });
 
   try {
@@ -43,6 +48,6 @@ export async function POST(req: Request) {
 
   await fs.mkdir(abs, { recursive: true });
   // 新建目录后自动 commit + push 到 GitHub
-  await syncPushNotes(`web: mkdir ${body.path}`);
+  await syncPushNotes(`web: mkdir ${body.path}`, repo.root);
   return Response.json({ path: body.path, created: true });
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
+  ArrowLeft,
   ChevronRight,
   ChevronsDownUp,
   CloudDownload,
@@ -10,10 +11,12 @@ import {
   FilePlus,
   FileUp,
   Folder,
+  FolderGit2,
   FolderPlus,
   Loader2,
   Pencil,
   PanelLeft,
+  Plus,
   RefreshCw,
   Columns2,
   Trash2,
@@ -21,6 +24,7 @@ import {
 } from "lucide-react";
 import { DocPane, type DocPaneApi } from "@/components/doc/DocPane";
 import { useT } from "@/lib/i18n/context";
+import { cacheGetJSON, cacheSetJSON } from "@/lib/docs/client-cache";
 
 interface DocNode {
   name: string;
@@ -31,10 +35,23 @@ interface DocNode {
 }
 
 interface TreeResp {
+  repo?: string;
   root: string;
   tree: DocNode;
   error?: string;
   hint?: string;
+}
+
+/** /api/docs/repos 列表项 */
+interface LibraryRepoMeta {
+  id: string;
+  name: string;
+  remote: string;
+  root: string;
+  managed: boolean;
+  addedAt?: string;
+  exists: boolean;
+  isRepo: boolean;
 }
 
 /** 笔记树拖拽负载（dataTransfer 中存放源条目相对路径） */
@@ -50,6 +67,9 @@ function extractPrefixNum(name: string): { num: number | null; rest: string } {
 const TREE_WIDTH_KEY = "doc-library-tree-width";
 const SPLIT_RATIO_KEY = "doc-library-split-ratio";
 const TREE_DEFAULT_WIDTH = 280;
+/** 当前选择的笔记仓库标识（多仓库；缺省进入仓库选择页） */
+const REPO_KEY = "doc-library-repo-id";
+const REPO_DEFAULT_ID = "default";
 /** 右键菜单项（反馈：目录树右键现在只有重命名，新增删除/新建入口） */
 type MenuAction = "rename" | "delete" | "newFile" | "newDir";
 
@@ -78,14 +98,6 @@ export default function LibraryPage() {
   const [rightPath, setRightPath] = useState<string | null>(null);
   const [splitOpen, setSplitOpen] = useState(false);
   const [focused, setFocused] = useState<"left" | "right">("left");
-  /** 会话页状态：切到其他页面再回来时恢复（反馈：不要重置到默认） */
-  const sessionRef = useRef(
-    typeof window !== "undefined"
-      ? (JSON.parse(sessionStorage.getItem("doc-library-page") ?? "null") as
-          | { openPath?: string | null; rightPath?: string | null; splitOpen?: boolean; focused?: "left" | "right" }
-          | null)
-      : null,
-  );
   // 分屏比例（左栏宽度百分比，可拖动调节）
   const [splitRatio, setSplitRatio] = useState(50);
   const splitBoxRef = useRef<HTMLDivElement>(null);
@@ -109,6 +121,18 @@ export default function LibraryPage() {
   const leftApiRef = useRef<DocPaneApi | null>(null);
   const rightApiRef = useRef<DocPaneApi | null>(null);
 
+  // ---------- 多仓库 ----------
+  const [repos, setRepos] = useState<LibraryRepoMeta[] | null>(null);
+  const [reposLoading, setReposLoading] = useState(true);
+  /** 当前进入的仓库；null = 停留在仓库选择页 */
+  const [repoId, setRepoId] = useState<string | null>(null);
+  const [repoBusyId, setRepoBusyId] = useState<string | null>(null);
+  const [repoForm, setRepoForm] = useState({ name: "", url: "" });
+  const [addingRepo, setAddingRepo] = useState(false);
+  const [repoMsg, setRepoMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  /** 已做过会话快照恢复的仓库（每个仓库只恢复一次） */
+  const restoredRepoRef = useRef<string | null>(null);
+
   /** 另一栏拖来一个标签 → 本栏打开 + 源栏静默移除（未保存提示确认） */
   const adoptInto = useCallback(
     (pane: "left" | "right") => (path: string) => {
@@ -127,30 +151,71 @@ export default function LibraryPage() {
     [splitOpen, focused, t],
   );
 
-  // 初次挂载：恢复上次离开时的打开状态；之后每次变化写快照
+  const refreshRepos = useCallback(async (): Promise<LibraryRepoMeta[]> => {
+    try {
+      const r = await fetch("/api/docs/repos");
+      const json = (await r.json()) as { repos?: LibraryRepoMeta[] };
+      const list = json.repos ?? [];
+      setRepos(list);
+      cacheSetJSON("doc-repos", list);
+      return list;
+    } catch {
+      setRepos([]);
+      return [];
+    } finally {
+      setReposLoading(false);
+    }
+  }, []);
+
+  // 初次挂载：读取上次选择的仓库 + 拉取仓库列表；之后每次变化写快照
   useEffect(() => {
-    const s = sessionRef.current;
-    if (typeof window !== "undefined" && window.innerWidth >= 640 && s) {
+    const saved = localStorage.getItem(REPO_KEY);
+    // 会话缓存（反馈：切页面回来不要重新拉取）：先立即恢复列表，后台静默校验
+    const cachedRepos = cacheGetJSON<LibraryRepoMeta[]>("doc-repos");
+    if (cachedRepos) {
+      setRepos(cachedRepos);
+      setReposLoading(false);
+    }
+    refreshRepos().then((list) => {
+      if (saved && list.some((r) => r.id === saved)) setRepoId(saved);
+      else if (saved) localStorage.removeItem(REPO_KEY);
+    });
+  }, [refreshRepos]);
+
+  /** 选定仓库后（每个仓库只做一次）恢复上次离开时的打开状态 */
+  useEffect(() => {
+    if (!repoId || restoredRepoRef.current === repoId || typeof window === "undefined") return;
+    restoredRepoRef.current = repoId;
+    const key = repoId === REPO_DEFAULT_ID ? "doc-library-page" : `doc-library-page@${repoId}`;
+    let s = null;
+    try {
+      s = JSON.parse(sessionStorage.getItem(key) ?? "null");
+    } catch { /* ignore */ }
+    if (window.innerWidth >= 640 && s) {
       setOpenPath(s.openPath ?? null);
       setRightPath(s.rightPath ?? null);
       setSplitOpen(!!s.splitOpen && !!s.rightPath);
       setFocused(s.focused === "right" ? "right" : "left");
     }
-    // 树展开状态仍按屏幕宽度决定
     setTreeOpen(window.innerWidth >= 640);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setSplitRatio(() => {
+      const r = Number(localStorage.getItem(SPLIT_RATIO_KEY));
+      return Number.isFinite(r) && r >= 20 && r <= 80 ? r : 50;
+    });
+  }, [repoId]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !repoId) return;
+    const key = repoId === REPO_DEFAULT_ID ? "doc-library-page" : `doc-library-page@${repoId}`;
     try {
       sessionStorage.setItem(
-        "doc-library-page",
+        key,
         JSON.stringify({ openPath, rightPath, splitOpen, focused }),
       );
     } catch {
       /* ignore */
     }
-  }, [openPath, rightPath, splitOpen, focused]);
+  }, [repoId, openPath, rightPath, splitOpen, focused]);
 
   useEffect(() => {
     const w = Number(localStorage.getItem(TREE_WIDTH_KEY));
@@ -214,22 +279,159 @@ export default function LibraryPage() {
     else setOpenPath(p);
   }
 
+  // ---------- 多仓库：列表/进出/新增/删除 ----------
+
+  /** 进入某个仓库（目录树按其根展示） */
+  const enterRepo = useCallback((id: string) => {
+    localStorage.setItem(REPO_KEY, id);
+    setOpenPath(null);
+    setRightPath(null);
+    setSplitOpen(false);
+    setRepoMsg(null);
+    setTreeOpen(window.innerWidth >= 640);
+    setRepoId(id);
+  }, []);
+
+  /** 返回仓库选择页（可切换/管理仓库） */
+  const exitToPicker = useCallback(() => {
+    localStorage.removeItem(REPO_KEY);
+    setRepoId(null);
+    setRepoMsg(null);
+    setReposLoading(true);
+    refreshRepos();
+  }, [refreshRepos]);
+
+  /** 新增 git 仓库：服务器端自动 clone（默认 ~/Documents/knowlege_libraries） */
+  async function submitAddRepo() {
+    const url = repoForm.url.trim();
+    if (!url || addingRepo) return;
+    setAddingRepo(true);
+    setRepoMsg(null);
+    try {
+      const r = await fetch("/api/docs/repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, name: repoForm.name.trim() }),
+      });
+      const json = (await r.json()) as { error?: string; reused?: boolean; repo?: { id: string; name: string } };
+      if (!r.ok || !json.repo) {
+        setRepoMsg({ kind: "err", text: json.error ?? "添加失败" });
+        return;
+      }
+      setRepoMsg({
+        kind: "ok",
+        text: json.reused
+          ? `已登记现有克隆：${json.repo.name}`
+          : `克隆完成：${json.repo.name}`,
+      });
+      setRepoForm({ name: "", url: "" });
+      await refreshRepos();
+      // 成功后直接进入新仓库
+      enterRepo(json.repo.id);
+    } catch (e) {
+      setRepoMsg({ kind: "err", text: (e as Error).message });
+    } finally {
+      setAddingRepo(false);
+    }
+  }
+
+  /** 删除仓库：受管仓库连同本地克隆删除（远端不受影响）；默认仓库仅移出列表 */
+  async function deleteRepo(repo: LibraryRepoMeta) {
+    const msg = repo.managed
+      ? `删除仓库「${repo.name}」？\n将同时删除本地克隆目录（远端 GitHub 不受影响）`
+      : `从列表移除「${repo.name}」？（本地目录不会被删除）`;
+    if (!window.confirm(msg)) return;
+    if (repo.id === repoId) exitToPicker();
+    setRepoBusyId(repo.id);
+    setRepoMsg(null);
+    try {
+      const r = await fetch(`/api/docs/repos?id=${encodeURIComponent(repo.id)}`, { method: "DELETE" });
+      const json = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setRepoMsg({ kind: "err", text: json.error ?? "删除失败" });
+        return;
+      }
+      setRepoMsg({ kind: "ok", text: `已删除：${repo.name}` });
+      refreshRepos();
+    } finally {
+      setRepoBusyId(null);
+    }
+  }
+
+  /** 修改仓库展示名（不影响 git 地址与本地目录） */
+  async function renameRepo(repo: LibraryRepoMeta) {
+    const newName = window.prompt(`修改仓库名称（当前：${repo.name}）`, repo.name);
+    if (!newName || newName.trim() === repo.name) return;
+    const name = newName.trim();
+    if (name.length > 100) {
+      setRepoMsg({ kind: "err", text: "名称过长（最多 100 字符）" });
+      return;
+    }
+    setRepoBusyId(repo.id);
+    setRepoMsg(null);
+    try {
+      const r = await fetch("/api/docs/repos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: repo.id, name }),
+      });
+      const json = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setRepoMsg({ kind: "err", text: json.error ?? "改名失败" });
+        return;
+      }
+      setRepoMsg({ kind: "ok", text: `已改名：${name}` });
+      refreshRepos();
+    } finally {
+      setRepoBusyId(null);
+    }
+  }
+
   const load = useCallback(() => {
-    setLoading(true);
+    if (!repoId) {
+      setLoading(false);
+      setErr(null);
+      setData(null);
+      return;
+    }
+    // 会话缓存（反馈：切页面/刷新回来不要重新拉取刷新）：先展示缓存树，后台静默校验
+    const cacheKey = `doc-tree:${repoId}`;
+    const cached = cacheGetJSON<TreeResp>(cacheKey);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setErr(null);
-    fetch("/api/docs/tree")
+    fetch(`/api/docs/tree?repo=${encodeURIComponent(repoId)}`)
       .then(async (r) => {
         const json = (await r.json()) as TreeResp;
+        if (r.status === 404 && json.error === "unknown_repo") {
+          // 仓库在服务器端已被删除：清掉本机记住的选择，回到仓库列表
+          localStorage.removeItem(REPO_KEY);
+          setRepoId(null);
+          return;
+        }
         if (!r.ok) {
           setErr(json.hint || json.error || "未知错误");
           setData(null);
         } else {
-          setData(json);
+          // 与缓存一致 → 不重设（避免每次切回都重渲染整棵树）
+          const prev = cacheGetJSON<TreeResp>(cacheKey);
+          const same = prev && JSON.stringify(prev) === JSON.stringify(json);
+          if (!same) {
+            cacheSetJSON(cacheKey, json);
+            setData(json);
+          }
         }
       })
-      .catch((e) => setErr((e as Error).message))
+      .catch((e) => {
+        // 有缓存时网络失败不打断当前内容
+        if (!cacheGetJSON<TreeResp>(cacheKey)) setErr((e as Error).message);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [repoId]);
 
   useEffect(load, [load]);
 
@@ -238,7 +440,7 @@ export default function LibraryPage() {
     if (pulling) return;
     setPulling(true);
     try {
-      const r = await fetch("/api/docs/pull", { method: "POST" });
+      const r = await fetch(`/api/docs/pull${repoId ? `?repo=${encodeURIComponent(repoId)}` : ""}`, { method: "POST" });
       const json = (await r.json()) as {
         error?: string;
         mode?: "ff" | "reset" | "unchanged";
@@ -285,7 +487,7 @@ export default function LibraryPage() {
     const r = await fetch("/api/docs/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: node.path, newName: newName.trim() }),
+      body: JSON.stringify({ path: node.path, newName: newName.trim(), repo: repoId }),
     });
     const json = await r.json();
     if (!r.ok) {
@@ -304,7 +506,7 @@ export default function LibraryPage() {
   async function deleteNode(node: DocNode) {
     const what = node.type === "dir" ? `文件夹「${node.name}」及其全部内容` : `「${node.name}」`;
     if (!window.confirm(`${t.library.confirmDelete(what)}`)) return;
-    const r = await fetch(`/api/docs/delete?path=${encodeURIComponent(node.path)}`, {
+    const r = await fetch(`/api/docs/delete?path=${encodeURIComponent(node.path)}${repoId ? `&repo=${encodeURIComponent(repoId)}` : ""}`, {
       method: "DELETE",
     });
     const json = (await r.json()) as { error?: string };
@@ -323,7 +525,7 @@ export default function LibraryPage() {
     const r = await fetch("/api/docs/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: srcPath, targetDir }),
+      body: JSON.stringify({ path: srcPath, targetDir, repo: repoId }),
     });
     const json = (await r.json()) as { error?: string; noop?: boolean };
     if (!r.ok) {
@@ -344,6 +546,7 @@ export default function LibraryPage() {
       form.append("file", file);
       form.append("dir", dirPath);
       form.append("name", file.name);
+      if (repoId) form.append("repo", repoId);
       const r = await fetch("/api/docs/upload-file", { method: "POST", body: form });
       const json = (await r.json()) as { path?: string; error?: string };
       if (!r.ok || !json.path) {
@@ -386,7 +589,7 @@ export default function LibraryPage() {
     const r = await fetch("/api/docs/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: fullPath }),
+      body: JSON.stringify({ path: fullPath, repo: repoId }),
     });
     const json = await r.json();
     if (!r.ok) {
@@ -408,7 +611,7 @@ export default function LibraryPage() {
     const r = await fetch("/api/docs/mkdir", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: fullPath }),
+      body: JSON.stringify({ path: fullPath, repo: repoId }),
     });
     const json = await r.json();
     if (!r.ok) {
@@ -428,7 +631,7 @@ export default function LibraryPage() {
       const r = await fetch("/api/docs/import-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, dir: importDir.trim(), name: importName.trim() }),
+        body: JSON.stringify({ url, dir: importDir.trim(), name: importName.trim(), repo: repoId }),
       });
       const json = (await r.json()) as { path?: string; error?: string };
       if (!r.ok || !json.path) {
@@ -447,6 +650,126 @@ export default function LibraryPage() {
     }
   }
 
+  // ---------- 仓库选择页：进笔记库先选仓库；这里同时提供新增/删除仓库 ----------
+  if (!repoId) {
+    return (
+      <div className="h-[calc(100dvh-3.5rem)] overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+          <div>
+            <h1 className="text-lg font-bold flex items-center gap-2">
+              <FolderGit2 className="w-5 h-5 text-amber-500" /> 选择笔记仓库
+            </h1>
+            <p className="text-xs text-zinc-500 mt-1 leading-5">
+              同一个笔记库可以挂载多个 git 仓库。选定仓库后按原有目录树方式浏览与编辑；
+              新增仓库会在服务器端自动 clone，删除仓库只影响本地克隆（远端 GitHub 不受影响）。
+            </p>
+          </div>
+
+          {/* 仓库列表 */}
+          <div className="space-y-2">
+            {reposLoading && (
+              <div className="text-zinc-500 flex items-center justify-center gap-2 text-sm py-6">
+                <Loader2 className="w-4 h-4 animate-spin" /> 加载仓库列表…
+              </div>
+            )}
+            {!reposLoading && repos?.length === 0 && (
+              <div className="text-sm text-zinc-500 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-6 text-center">
+                暂无仓库。先在下方添加一个 git 仓库。
+              </div>
+            )}
+            {repos?.map((repo) => (
+              <div
+                key={repo.id}
+                className="group flex items-center gap-2 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-amber-300 dark:hover:border-amber-800/60 bg-white dark:bg-zinc-950"
+              >
+                <button onClick={() => enterRepo(repo.id)} className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FolderGit2 className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span className="font-medium truncate">{repo.name}</span>
+                    {repo.id === REPO_DEFAULT_ID && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-500 shrink-0">默认</span>
+                    )}
+                    {repo.id !== REPO_DEFAULT_ID && (!repo.exists || !repo.isRepo) && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">本地目录缺失</span>
+                    )}
+                    {repo.exists && repo.isRepo && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 shrink-0">git 就绪</span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-[10px] text-zinc-400 font-mono truncate" title={repo.remote}>{repo.remote}</div>
+                  <div className="text-[10px] text-zinc-400 font-mono truncate" title={repo.root}>{repo.root}</div>
+                </button>
+                {repoBusyId === repo.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-zinc-400 shrink-0" />
+                ) : (
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={() => renameRepo(repo)}
+                      title="修改仓库名称"
+                      className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 opacity-60 group-hover:opacity-100"
+                    >
+                      <Pencil className="w-4 h-4 text-zinc-500" />
+                    </button>
+                    <button
+                      onClick={() => deleteRepo(repo)}
+                      title="删除该仓库"
+                      className="p-1.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-60 group-hover:opacity-100"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-500" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {repoMsg && (
+              <div className={"text-xs " + (repoMsg.kind === "ok" ? "text-emerald-600" : "text-rose-600")}>
+                {repoMsg.text}
+              </div>
+            )}
+          </div>
+
+          {/* 新增仓库 */}
+          <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 space-y-3 bg-white dark:bg-zinc-950">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <Plus className="w-4 h-4 text-blue-600" /> 新增 git 仓库
+            </h2>
+            <label className="block text-xs text-zinc-500">
+              显示名（可选）
+              <input
+                value={repoForm.name}
+                onChange={(e) => setRepoForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="例如：机器学习笔记"
+                className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="block text-xs text-zinc-500">
+              Git 地址
+              <input
+                value={repoForm.url}
+                onChange={(e) => setRepoForm((f) => ({ ...f, url: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter" && !addingRepo) submitAddRepo(); }}
+                placeholder="https://github.com/owner/repo.git"
+                className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 outline-none focus:border-blue-500"
+              />
+            </label>
+            <button
+              onClick={submitAddRepo}
+              disabled={addingRepo || !repoForm.url.trim()}
+              className="w-full py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {addingRepo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              {addingRepo ? "克隆中…（可能需要一分钟）" : "添加并克隆"}
+            </button>
+            <p className="text-[10px] text-zinc-400 leading-4">
+              克隆落到服务器的多仓库目录（默认 ~/Documents/knowlege_libraries，可用 KNOWLEDGE_LIBRARIES_PATH 覆盖）。
+              若目标目录已存在且是 git 仓库，会直接登记使用。
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[calc(100dvh-3.5rem)] flex flex-col overflow-hidden">
       {/* 顶部工具条 */}
@@ -460,6 +783,17 @@ export default function LibraryPage() {
             <PanelLeft className="w-3.5 h-3.5" />
           </button>
           <h1 className="text-base font-bold truncate">{t.library.title}</h1>
+          {/* 当前仓库：点击回到仓库列表（切换/管理仓库） */}
+          <button
+            onClick={exitToPicker}
+            title="切换 / 管理仓库（新增或删除 git 仓库）"
+            className="shrink-0 flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-amber-300 dark:border-amber-800/60 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 max-w-[40vw]"
+          >
+            <FolderGit2 className="w-3.5 h-3.5" />
+            <span className="truncate">
+              {repos?.find((r) => r.id === repoId)?.name ?? repoId}
+            </span>
+          </button>
           <span className="text-xs text-zinc-400 hidden md:inline truncate">
             {t.library.subtitle}
           </span>
@@ -628,7 +962,8 @@ export default function LibraryPage() {
           >
             <DocPane
               docPath={openPath}
-              sessionKey="library-left"
+              sessionKey={`library-left@${repoId}`}
+              repo={repoId}
               paneId="left"
               onForeignDrop={splitOpen ? adoptInto("left") : undefined}
               apiRef={leftApiRef}
@@ -659,7 +994,8 @@ export default function LibraryPage() {
               >
                 <DocPane
                   docPath={rightPath}
-                  sessionKey="library-right"
+                  sessionKey={`library-right@${repoId}`}
+                  repo={repoId}
                   paneId="right"
                   onForeignDrop={adoptInto("right")}
                   apiRef={rightApiRef}

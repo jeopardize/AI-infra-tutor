@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { repoFromRequest, getLibraryRepo } from "@/lib/docs/repos";
 import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -36,13 +37,16 @@ export async function POST(req: Request) {
   if (!/\.pdf$/i.test(name)) name += ".pdf";
   name = name.slice(-120);
 
+  const repo = await getLibraryRepo(String(form.get("repo") ?? ""));
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
+
   const rel = dir ? `${dir}/${name}` : name;
-  const abs = resolveSafe(rel);
+  const abs = resolveSafe(rel, repo.root);
   if (!abs) return Response.json({ error: "invalid path" }, { status: 400 });
   if (dir) await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, buf);
   try {
-    await syncPushNotes(`web: upload pdf ${rel}`);
+    await syncPushNotes(`web: upload pdf ${rel}`, repo.root);
   } catch { /* 尽力而为 */ }
   return Response.json({ path: rel, bytes: buf.length });
 }

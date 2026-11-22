@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { repoFromRequest, getLibraryRepo } from "@/lib/docs/repos";
 import { resolveSafe } from "@/lib/docs/fs";
 import { syncPushNotes } from "@/lib/docs/sync";
 
@@ -14,6 +15,8 @@ interface WriteBody {
   autosave?: boolean;
   /** 默认 false：路径上的父目录如果不存在则失败；true 时自动 mkdir -p */
   createParents?: boolean;
+  /** 多仓库标识（可选，缺省默认笔记库） */
+  repo?: string;
 }
 
 export async function POST(req: Request) {
@@ -29,6 +32,8 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  const repo = await repoFromRequest(req, body.repo);
+  if (!repo) return Response.json({ error: "unknown_repo" }, { status: 404 });
   // 只允许 markdown
   if (!/\.(md|markdown)$/i.test(body.path)) {
     return Response.json(
@@ -36,7 +41,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const abs = resolveSafe(body.path);
+  const abs = resolveSafe(body.path, repo.root);
   if (!abs) return Response.json({ error: "invalid path" }, { status: 400 });
 
   // 父目录存在性
@@ -77,7 +82,7 @@ export async function POST(req: Request) {
   await fs.writeFile(abs, body.content, "utf-8");
   // 写入后自动 commit + push 到 GitHub（笔记库的主仓库）；自动保存时跳过
   if (!body.autosave) {
-    await syncPushNotes(`web: update ${body.path}`);
+    await syncPushNotes(`web: update ${body.path}`, repo.root);
   }
   const stat = await fs.stat(abs);
   return Response.json({

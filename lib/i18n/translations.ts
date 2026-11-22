@@ -258,9 +258,23 @@ export interface Dict {
     insertTable: string;
     insertTableSize: string;
     insertTableInvalid: string;
+    penRed: string;
+    penBlue: string;
     pasteImageName: (def: string) => string;
     pasteImageFailed: (e: string) => string;
+    pasteImageServerError: (status: number) => string;
+    imgPreview: string;
+    imgSize: string;
+    imgPin: string;
+    imgUnpin: string;
+    imgApplyWidth: string;
+    imgEscHint: string;
     mermaidFailed: string;
+    codeCollapse: string;
+    codeExpand: string;
+    codeCollapseShort: string;
+    codeExpandShort: (total: number) => string;
+    codeCollapsedMore: (n: number) => string;
     imageAlt: string;
     // PDF 预览与标注
     pdfLoading: string;
@@ -625,9 +639,23 @@ const zh: Dict = {
     insertTable: "插入表格",
     insertTableSize: `表格规格（行x列，首行为表头，如 3x4）：`,
     insertTableInvalid: "格式无效，请输入如 3x4",
+    penRed: "红笔批注（选中文字一键变红；或开启后直接输入即红色，Esc/再点一次结束）",
+    penBlue: "蓝笔批注（选中文字一键变蓝；或开启后直接输入即蓝色，Esc/再点一次结束）",
     pasteImageName: (def) => `图片名称（保存到当前笔记目录的 images/ 下）：`,
     pasteImageFailed: (e) => `图片上传失败：${e}`,
+    pasteImageServerError: (status) => `服务返回了无效响应（${status}），通常是大图超出限制或服务繁忙——已自动压缩大图，请重试`,
+    imgPreview: "图片预览",
+    imgSize: "调整显示宽度",
+    imgPin: "固定到桌面",
+    imgUnpin: "取消固定",
+    imgApplyWidth: "应用宽度到文档",
+    imgEscHint: "Esc 或点击空白处关闭",
     mermaidFailed: "mermaid 图表渲染失败",
+    codeCollapse: "折叠代码块",
+    codeExpand: "展开代码块",
+    codeCollapseShort: "折叠",
+    codeExpandShort: (total) => `展开（共 ${total} 行）`,
+    codeCollapsedMore: (n) => `已折叠 ${n} 行，点上方按钮展开`,
     imageAlt: "图片",
     pdfLoading: "正在加载 PDF…",
     pdfFailed: (e) => `PDF 加载失败：${e}`,
@@ -1007,9 +1035,23 @@ const en: Dict = {
     insertTable: "Insert table",
     insertTableSize: `Table size (rows x cols, first row is header, e.g. 3x4):`,
     insertTableInvalid: "Invalid format, e.g. 3x4",
+    penRed: "Red pen (select text to make it red; or turn on and type in red, Esc or click again to stop)",
+    penBlue: "Blue pen (select text to make it blue; or turn on and type in blue, Esc or click again to stop)",
     pasteImageName: (def) => `Image name (saved under images/ next to this note):`,
     pasteImageFailed: (e) => `Image upload failed: ${e}`,
+    pasteImageServerError: (status) => `Server returned an invalid response (${status}); usually the image exceeded limits or the service is busy — large images are auto-compressed, please retry`,
+    imgPreview: "Image preview",
+    imgSize: "Adjust display width",
+    imgPin: "Pin to screen",
+    imgUnpin: "Unpin",
+    imgApplyWidth: "Apply width to document",
+    imgEscHint: "Esc or click outside to close",
     mermaidFailed: "Failed to render mermaid diagram",
+    codeCollapse: "Collapse code",
+    codeExpand: "Expand code",
+    codeCollapseShort: "Collapse",
+    codeExpandShort: (total) => `Expand (${total} lines)`,
+    codeCollapsedMore: (n) => `${n} more lines collapsed — use the toggle above to expand`,
     imageAlt: "Image",
     pdfLoading: "Loading PDF…",
     pdfFailed: (e) => `Failed to load PDF: ${e}`,

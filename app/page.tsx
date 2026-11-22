@@ -352,8 +352,19 @@ export default function HomePage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
         <div className="min-w-0 space-y-5">
           {loading ? (
-            <div className="p-10 text-center text-zinc-400 flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> 正在加载今日题目…
+            /* 骨架屏（反馈：刷新白屏体验差）：占位卡片保持布局稳定，不再是空页面+小 spinner */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-pulse" aria-hidden>
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3"
+                >
+                  <div className="h-4 w-3/4 rounded bg-zinc-200 dark:bg-zinc-800" />
+                  <div className="h-3 w-full rounded bg-zinc-100 dark:bg-zinc-800/60" />
+                  <div className="h-3 w-5/6 rounded bg-zinc-100 dark:bg-zinc-800/60" />
+                  <div className="h-3 w-2/3 rounded bg-zinc-100 dark:bg-zinc-800/60" />
+                </div>
+              ))}
             </div>
           ) : loadError ? (
             <div className="p-8 rounded-xl border border-rose-200 dark:border-rose-900 text-rose-600 text-sm">
