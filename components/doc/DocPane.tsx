@@ -494,14 +494,12 @@ export function DocPane({
   /** 打开图片 lightbox（预览/实时预览中的图片点击） */
   const openImage = useCallback((st: ImageLightboxState) => setLightbox(st), []);
 
-  /** 编辑器点击 → 右侧实时预览滚到光标所在源码行对应的块（反馈：来回翻找很耗时间）。
-   *  预览块带 data-src-line（源码行号），取行号 ≤ 光标行号的最后一个块，
+  /** 把实时预览滚到源码行号（1 起）对应的块（反馈：编辑器点击/大纲点击要联动预览）。
+   *  预览块带 data-src-line（源码行号），取行号 ≤ 该行的最后一个块，
    *  只滚预览容器自身（不动外层页面）。 */
-  const syncPreviewToCaret = useCallback(() => {
-    const ta = draftRef.current;
+  const scrollPreviewToLine = useCallback((line: number) => {
     const root = previewRef.current;
-    if (!ta || !root) return;
-    const line = ta.value.slice(0, ta.selectionStart).split("\n").length;
+    if (!root) return;
     let target: HTMLElement | null = null;
     for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-src-line]"))) {
       if (Number(el.dataset.srcLine) <= line) target = el;
@@ -511,6 +509,13 @@ export function DocPane({
     const delta = target.getBoundingClientRect().top - root.getBoundingClientRect().top;
     root.scrollTop += delta - 8;
   }, []);
+
+  /** 编辑器点击 → 右侧实时预览滚到光标所在源码行对应的块（反馈：来回翻找很耗时间）。 */
+  const syncPreviewToCaret = useCallback(() => {
+    const ta = draftRef.current;
+    if (!ta) return;
+    scrollPreviewToLine(ta.value.slice(0, ta.selectionStart).split("\n").length);
+  }, [scrollPreviewToLine]);
 
   /** 把 lightbox 中选定的宽度写回 markdown：![alt](src) → ![alt](src "W")
    *  （反馈：插入的图片显示过大，希望可调大小） */
@@ -698,6 +703,8 @@ export function DocPane({
       // 软换行会让"行号×行高"严重偏离实际位置：用同款样式的镜像 div 精确测量第 N 行顶部
       const top = measureTextareaLineTop(ta, h.line);
       ta.scrollTop = Math.max(0, top - 40);
+      // 实时预览开启时联动滚动到同一标题（反馈：大纲点击要同步实时渲染）
+      if (livePreview) scrollPreviewToLine(h.line + 1);
     }
   }
 
