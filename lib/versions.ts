@@ -4,7 +4,7 @@
  * （scripts/update.sh 部署时若检测到 LLM 自动润色的 pending summary，也会自动追加）。
  */
 
-export const APP_VERSION = "1.16.0";
+export const APP_VERSION = "1.17.0";
 
 export interface ChangelogEntry {
   version: string;
@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.17.0",
+    date: "2026-11-23",
+    items: [
+      "图片文件支持重命名与删除：目录树中图片可打开预览，悬停/右键均可重命名、删除",
+      "图片重命名时自动更新所有笔记中的相对路径引用，不再断链",
+    ],
+  },
   {
     version: "1.16.0",
     date: "2026-11-20",

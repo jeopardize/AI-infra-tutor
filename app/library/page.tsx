@@ -13,6 +13,7 @@ import {
   Folder,
   FolderGit2,
   FolderPlus,
+  Image as ImageIcon,
   Loader2,
   Pencil,
   PanelLeft,
@@ -1177,7 +1178,8 @@ function Tree({
     const isImg = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(
       node.ext ?? "",
     );
-    const openable = isMd || isPdf;
+    // 图片可打开预览（反馈：图片文件支持重命名/删除，可打开是基础交互）
+    const openable = isMd || isPdf || isImg;
     return (
       <button
         onClick={() => openable && onOpen(node.path)}
@@ -1197,7 +1199,11 @@ function Tree({
           e.dataTransfer.effectAllowed = "move";
         }}
       >
-        <FileText className="w-3.5 h-3.5 shrink-0" />
+        {isImg ? (
+          <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+        ) : (
+          <FileText className="w-3.5 h-3.5 shrink-0" />
+        )}
         <span className="truncate">{node.name}</span>
         {isImg && <span className="text-[10px] text-zinc-400">img</span>}
         {isPdf && <span className="text-[10px] text-rose-400">pdf</span>}
